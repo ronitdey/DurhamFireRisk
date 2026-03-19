@@ -230,10 +230,13 @@ class TestFuelModels:
             )
 
     def test_grass_spreads_faster_than_timber_litter(self):
-        """Grass fuels (GR2) should produce higher spread rates than timber litter (TL1)."""
+        """Grass fuels (GR4) should produce higher spread rates than timber litter (TL1)."""
         rothermel = RothermelFireSpread()
+        # Use cured-grass moisture (M_lh=0.06) with GR4 (M_x=0.40) so live fuel
+        # doesn't extinguish the fire. GR2 has M_x=0.15 — live fuel at 70% moisture
+        # kills reaction intensity entirely, making the test physically wrong.
         weather = WeatherParams(
-            M_1hr=0.06, M_10hr=0.08, M_100hr=0.10, M_lh=0.70, M_lw=0.90,
+            M_1hr=0.06, M_10hr=0.08, M_100hr=0.10, M_lh=0.06, M_lw=0.90,
             wind_speed_mph=15.0, wind_dir_deg=225.0, slope_deg=5.0,
         )
 
@@ -241,11 +244,11 @@ class TestFuelModels:
             p = SCOTT_BURGAN_PARAMS[model]
             return FuelParams(model=model, **{k: v for k, v in p.items() if k != "label"})
 
-        r_grass = rothermel.compute(make_fuel("GR2"), weather).R
+        r_grass = rothermel.compute(make_fuel("GR4"), weather).R
         r_litter = rothermel.compute(make_fuel("TL1"), weather).R
         assert r_grass > r_litter, (
-            f"Grass (GR2) must spread faster than timber litter (TL1): "
-            f"GR2={r_grass:.2f}, TL1={r_litter:.2f} ft/min"
+            f"Grass (GR4) must spread faster than timber litter (TL1): "
+            f"GR4={r_grass:.2f}, TL1={r_litter:.2f} ft/min"
         )
 
 

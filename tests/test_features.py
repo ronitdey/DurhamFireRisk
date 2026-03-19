@@ -33,15 +33,16 @@ class TestTerrainFeatures:
         interior_slope = slope[5:-5, 5:-5].mean()
         assert 8 < interior_slope < 12, f"Expected ~10° slope, got {interior_slope:.1f}°"
 
-    def test_hli_south_facing_highest(self):
-        """South/SW-facing slopes should have highest Heat Load Index."""
+    def test_hli_sw_facing_exceeds_ne_facing(self):
+        """SW-facing slopes (hot/dry) should have higher HLI than NE-facing (cool/moist)."""
         from features.terrain.slope_aspect import _compute_heat_load_index
         slope = np.full((10, 10), 20.0, dtype="float32")
 
-        # HLI for SW-facing (aspect=225°) should exceed N-facing (aspect=0°)
+        # McCune & Keon (2002): NE (45°) is the cold reference azimuth → HLI≈0
+        # SW-facing (225°) is maximum deviation from cold reference → HLI≈1
         hli_sw = _compute_heat_load_index(slope, np.full((10, 10), 225.0)).mean()
-        hli_north = _compute_heat_load_index(slope, np.full((10, 10), 0.0)).mean()
-        assert hli_sw > hli_north, f"SW-facing HLI ({hli_sw:.3f}) must exceed N-facing ({hli_north:.3f})"
+        hli_ne = _compute_heat_load_index(slope, np.full((10, 10), 45.0)).mean()
+        assert hli_sw > hli_ne, f"SW-facing HLI ({hli_sw:.3f}) must exceed NE-facing ({hli_ne:.3f})"
 
     def test_hli_range_zero_to_one(self):
         """Heat Load Index must always be in [0, 1]."""

@@ -217,7 +217,7 @@ def _compute_heat_load_index(slope_deg: np.ndarray, aspect_deg: np.ndarray) -> n
     Ranges 0–1; higher = hotter, drier, more fire-prone.
     South/southwest-facing slopes with steep grades score highest.
     """
-    cos_term = (1 - np.cos(np.radians(aspect_deg - 225))) / 2
+    cos_term = (1 - np.cos(np.radians(aspect_deg - 45))) / 2
     sin_slope = np.sin(np.radians(slope_deg))
     hli = cos_term * sin_slope
     return np.clip(hli, 0, 1).astype("float32")
