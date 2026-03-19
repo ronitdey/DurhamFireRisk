@@ -296,7 +296,7 @@ def _detect_crs(las) -> str:
     """
     # Coordinate range check first — more reliable than embedded VLR metadata
     try:
-        x_mean = float(las.x.mean())
+        x_mean = float(np.mean(las.x))
         if 1_500_000 < x_mean < 2_200_000:
             logger.info("Detected NC State Plane feet (EPSG:2264) from coordinate range.")
             return "EPSG:2264"
