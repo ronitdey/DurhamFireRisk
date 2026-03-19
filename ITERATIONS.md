@@ -23,3 +23,11 @@ Tracks every meaningful change to the Duke Climate Risk Engine — what changed,
 - **Next:** run the LiDAR pipeline on Durham County and smoke test the Rothermel simulation on a real DEM tile
 
 ---
+
+## v0.3 — 2026-03-19
+
+- Pivoted from full-Durham ingestion to single-building PoC on Randolph Residence Hall (50 Brodie Gym Drive) after hitting blocked/unreliable external endpoints for county-scale LiDAR
+- Added `laspy` + `scipy` fallback in `ncmap_downloader.py` so LiDAR processing works on Colab without the PDAL CLI, which can't be pip-installed on Python 3.12; successfully produced DEM, DSM, CHM, building mask, and intensity rasters at 186×271 from the Randolph Hall LAS file
+- Switched NOAA weather from LCD to GHCND dataset — LCD was returning persistent 500 errors even with a valid token; updated the record parser since GHCND uses a pivoted (one row per datatype) format instead of LCD's flat hourly rows; added synthetic Durham NC climatology fallback when CDO times out
+- Fixed LANDFIRE ingestion: the API requires an email address (was silently returning empty responses without one), layer names need year-versioned prefixes (`LF2020_FBFM40`, `LF2024_CC`, etc.), and all products now submit as one job; added synthetic TU5 fallback for when the API is unreachable
+- Dropped Orange County from parcel scope; study area bbox tightened to 1km around Randolph Hall

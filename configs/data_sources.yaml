@@ -110,4 +110,5 @@ parcels:
 # API keys (set as environment variables, not here)
 api_keys:
   noaa_cdo: "${NOAA_CDO_TOKEN}"
+  landfire_email: "${LANDFIRE_EMAIL}"   # Required by LANDFIRE API — your email address
   # Planetary Computer NAIP is publicly accessible without a key
