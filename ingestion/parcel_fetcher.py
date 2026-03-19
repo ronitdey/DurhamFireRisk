@@ -105,7 +105,7 @@ def identify_duke_parcels(parcels: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         "DUKE MANAGEMENT",
         "TRUSTEES OF DUKE",
     ]
-    owner_col = _find_column(parcels, ["owner", "owner_name", "OWNER", "OWNERNAME"])
+    owner_col = _find_column(parcels, ["owner", "owner_name", "OWNER", "OWNERNAME", "PROPERTY_OWNER"])
     if owner_col is None:
         logger.warning("No owner column found; cannot identify Duke parcels.")
         parcels["is_duke"] = False

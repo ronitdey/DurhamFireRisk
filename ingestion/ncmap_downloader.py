@@ -285,18 +285,40 @@ def _process_with_laspy(
 
 
 def _detect_crs(las) -> str:
-    """Try to detect CRS from LAS file VLRs, fall back to EPSG:32617."""
+    """
+    Detect CRS from LAS VLRs, falling back to coordinate-range heuristics.
+
+    NC OneMap LiDAR is delivered in NC State Plane NAD83 US feet (EPSG:2264).
+    UTM Zone 17N (EPSG:32617) eastings for Durham are ~680,000–690,000 m.
+    NC State Plane feet eastings for Durham are ~1,900,000–2,100,000 ft.
+    """
     try:
         for vlr in las.header.vlrs:
-            if vlr.record_id == 2112:  # WKT
-                return vlr.record_data.decode("utf-8").strip("\x00")
-        # Check for GeoTIFF keys
+            if vlr.record_id == 2112:  # WKT record
+                wkt = vlr.record_data.decode("utf-8").strip("\x00")
+                if wkt:
+                    return wkt
         for vlr in las.header.vlrs:
-            if vlr.record_id == 34735:
-                return "EPSG:32617"  # Default for NC UTM 17N
+            if vlr.record_id == 34736:  # GeoDoubleParamsTag — may contain EPSG
+                pass
     except Exception:
         pass
-    return "EPSG:32617"
+
+    # Coordinate-range heuristic
+    try:
+        x_mean = float(las.x.mean())
+        # NC State Plane feet (EPSG:2264): eastings ~1,500,000–2,200,000 ft
+        if 1_500_000 < x_mean < 2_200_000:
+            logger.info("Detected NC State Plane feet (EPSG:2264) from coordinate range.")
+            return "EPSG:2264"
+        # UTM Zone 17N (EPSG:32617): eastings ~600,000–700,000 m
+        if 600_000 < x_mean < 750_000:
+            return "EPSG:32617"
+    except Exception:
+        pass
+
+    logger.warning("Could not detect CRS from LAS file — defaulting to EPSG:2264 (NC State Plane feet).")
+    return "EPSG:2264"
 
 
 def _process_with_pdal(
