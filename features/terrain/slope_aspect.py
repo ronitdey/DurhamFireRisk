@@ -59,7 +59,7 @@ def compute_terrain_features(dem_path: Path, resolution_m: float = 10.0) -> xr.D
             "twi": (["y", "x"], twi.astype("float32")),
         },
         attrs={
-            "crs": meta["crs"].to_string(),
+            "crs": str(meta["crs"]),
             "transform": str(meta["transform"]),
             "resolution_m": resolution_m,
         },

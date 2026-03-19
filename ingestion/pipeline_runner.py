@@ -233,7 +233,7 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
         twins = builder.build_all_twins()
         outputs["twins"] = twins
         status["twins"] = len(twins) > 0
-        for tid, twin in twins.items():
+        for twin in twins:
             logger.info(f"  Twin '{twin.name}': risk={twin.risk_score}, "
                         f"features={len(twin.features)} vars")
         logger.info(f"Twins done in {time.time() - t0:.1f}s — {len(twins)} twin(s)")
