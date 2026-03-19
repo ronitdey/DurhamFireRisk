@@ -285,8 +285,8 @@ def _fetch_cdo_chunk(
 ) -> list[dict]:
     headers = {"token": token}
     params = {
-        "datasetid": "LCD",
-        "stationid": f"WBAN:{station_id[-5:]}",
+        "datasetid": "GHCND",
+        "stationid": f"GHCND:{station_id}",
         "startdate": start.strftime("%Y-%m-%d"),
         "enddate": end.strftime("%Y-%m-%d"),
         "limit": 1000,
@@ -320,22 +320,46 @@ def _fetch_cdo_chunk(
 
 
 def _parse_cdo_records(records: list[dict]) -> pd.DataFrame:
-    """Convert raw CDO records to a clean hourly DataFrame."""
-    rows = []
-    for r in records:
-        rows.append({
-            "datetime": r.get("date"),
-            "wind_speed_mph": r.get("HourlyWindSpeed"),
-            "wind_dir_deg": r.get("HourlyWindDirection"),
-            "temp_f": r.get("HourlyDryBulbTemperature"),
-            "rh_pct": r.get("HourlyRelativeHumidity"),
-            "precip_in": r.get("HourlyPrecipitation"),
-        })
-    df = pd.DataFrame(rows)
-    df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
-    for col in ["wind_speed_mph", "wind_dir_deg", "temp_f", "rh_pct", "precip_in"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    return df.dropna(subset=["datetime"]).set_index("datetime").sort_index()
+    """Convert raw CDO/GHCND records to a clean daily DataFrame.
+
+    GHCND records are pivoted: one row per (date, datatype) pair.
+    We pivot them into one row per date with weather columns.
+    """
+    if not records:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(records)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+
+    # Pivot: one row per date, columns are datatypes
+    pivoted = df.pivot_table(index="date", columns="datatype", values="value", aggfunc="first")
+
+    result = pd.DataFrame(index=pivoted.index)
+    # GHCND stores temps in tenths of degree C, wind in tenths of m/s, precip in tenths of mm
+    if "TMAX" in pivoted.columns:
+        result["temp_f"] = pivoted["TMAX"] / 10.0 * 9 / 5 + 32  # tenths C → F
+    if "TMIN" in pivoted.columns:
+        result["temp_min_f"] = pivoted["TMIN"] / 10.0 * 9 / 5 + 32
+    if "AWND" in pivoted.columns:
+        result["wind_speed_mph"] = pivoted["AWND"] / 10.0 * 2.23694  # tenths m/s → mph
+    if "WSF2" in pivoted.columns:
+        result["wind_gust_mph"] = pivoted["WSF2"] / 10.0 * 2.23694
+    if "WDF2" in pivoted.columns:
+        result["wind_dir_deg"] = pivoted["WDF2"]
+    if "PRCP" in pivoted.columns:
+        result["precip_in"] = pivoted["PRCP"] / 10.0 / 25.4  # tenths mm → inches
+    # RH is not in GHCND; estimate from TMAX/TMIN using Magnus formula approximation
+    if "TMAX" in pivoted.columns and "TMIN" in pivoted.columns:
+        tmax_c = pivoted["TMAX"] / 10.0
+        tmin_c = pivoted["TMIN"] / 10.0
+        # Approximate daily mean RH from dewpoint ≈ Tmin (common assumption)
+        e_sat = 6.108 * np.exp(17.27 * tmax_c / (tmax_c + 237.3))
+        e_dew = 6.108 * np.exp(17.27 * tmin_c / (tmin_c + 237.3))
+        result["rh_pct"] = np.clip(100.0 * e_dew / e_sat, 0, 100)
+
+    result.index.name = "datetime"
+    return result.sort_index()
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────
@@ -355,18 +379,18 @@ def main():
     )
 
     if not df.empty:
-        df.to_parquet(out_dir / "hourly_weather.parquet")
+        df.to_parquet(out_dir / "daily_weather.parquet")
         rose = build_wind_rose(df)
         with open(out_dir / "wind_rose.json", "w") as f:
             json.dump(rose, f, indent=2)
 
-        # Compute FWI for daily summaries
-        daily = df.resample("D").agg(
-            temp_c=("temp_f", lambda x: (x.mean() - 32) * 5 / 9),
-            rh_pct=("rh_pct", "mean"),
-            wind_kmh=("wind_speed_mph", lambda x: x.max() * 1.60934),
-            precip_mm=("precip_in", lambda x: x.sum() * 25.4),
-        ).dropna()
+        # Compute FWI — data is already daily from GHCND
+        daily = pd.DataFrame(index=df.index)
+        daily["temp_c"] = (df["temp_f"] - 32) * 5 / 9 if "temp_f" in df.columns else np.nan
+        daily["rh_pct"] = df["rh_pct"] if "rh_pct" in df.columns else 50.0
+        daily["wind_kmh"] = df["wind_speed_mph"] * 1.60934 if "wind_speed_mph" in df.columns else 0.0
+        daily["precip_mm"] = df["precip_in"] * 25.4 if "precip_in" in df.columns else 0.0
+        daily = daily.dropna()
         daily = compute_fire_weather_index(daily.reset_index())
         daily.to_parquet(out_dir / "daily_fwi.parquet")
         logger.info(f"Weather data saved to {out_dir}")

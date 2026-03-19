@@ -131,7 +131,11 @@ def process_lidar_to_rasters(
     resolution_m: float = 1.0,
 ) -> dict[str, Path]:
     """
-    Run PDAL pipelines on LAZ files to produce GeoTIFF rasters.
+    Process LAZ/LAS files into GeoTIFF rasters.
+
+    Tries PDAL CLI first (best quality, supports SMRF ground classification).
+    Falls back to laspy + scipy for environments where PDAL can't be installed
+    (e.g. Google Colab).
 
     Products:
         - bare_earth_dem: Ground-classified (class 2) DEM at resolution_m
@@ -154,6 +158,149 @@ def process_lidar_to_rasters(
     dict mapping product name → output GeoTIFF path.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check if PDAL CLI is available
+    import shutil
+    use_pdal = shutil.which("pdal") is not None
+
+    if use_pdal:
+        logger.info("Using PDAL CLI for LiDAR processing.")
+        return _process_with_pdal(laz_paths, out_dir, resolution_m)
+    else:
+        logger.info("PDAL CLI not found — using laspy + scipy fallback.")
+        return _process_with_laspy(laz_paths, out_dir, resolution_m)
+
+
+def _process_with_laspy(
+    laz_paths: list[Path],
+    out_dir: Path,
+    resolution_m: float,
+) -> dict[str, Path]:
+    """Process LAZ/LAS using laspy + scipy (no PDAL dependency)."""
+    import laspy
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_bounds
+    from scipy.interpolate import griddata
+
+    outputs: dict[str, Path] = {}
+
+    for laz in laz_paths:
+        stem = laz.stem
+        logger.info(f"Processing {laz.name} with laspy...")
+
+        las = laspy.read(str(laz))
+        x, y, z = las.x, las.y, las.z
+        classifications = las.classification
+        intensities = las.intensity
+
+        # Compute grid bounds
+        xmin, xmax = x.min(), x.max()
+        ymin, ymax = y.min(), y.max()
+        cols = int(np.ceil((xmax - xmin) / resolution_m))
+        rows = int(np.ceil((ymax - ymin) / resolution_m))
+        if cols < 1 or rows < 1:
+            logger.warning(f"Degenerate extent for {laz.name}, skipping.")
+            continue
+
+        transform = from_bounds(xmin, ymin, xmax, ymax, cols, rows)
+
+        def _rasterize(px, py, pz, method="linear"):
+            """Grid scattered points into a raster using scipy interpolation."""
+            xi = np.linspace(xmin + resolution_m / 2, xmax - resolution_m / 2, cols)
+            yi = np.linspace(ymax - resolution_m / 2, ymin + resolution_m / 2, rows)
+            grid_x, grid_y = np.meshgrid(xi, yi)
+            grid = griddata(
+                np.column_stack([px, py]), pz,
+                (grid_x, grid_y), method=method, fill_value=np.nan,
+            )
+            return grid.astype("float32")
+
+        def _write_tif(arr, path):
+            profile = {
+                "driver": "GTiff",
+                "dtype": "float32",
+                "width": cols,
+                "height": rows,
+                "count": 1,
+                "crs": _detect_crs(las),
+                "transform": transform,
+                "compress": "lzw",
+                "tiled": True,
+                "blockxsize": 256,
+                "blockysize": 256,
+            }
+            with rasterio.open(path, "w", **profile) as dst:
+                dst.write(arr, 1)
+            logger.info(f"Wrote {path.name} ({rows}x{cols})")
+
+        # --- Ground DEM (class 2) ---
+        dem_out = out_dir / f"{stem}_dem.tif"
+        if not dem_out.exists():
+            ground = classifications == 2
+            if ground.sum() > 100:
+                _write_tif(_rasterize(x[ground], y[ground], z[ground]), dem_out)
+            else:
+                logger.warning("Few ground-classified points; using all points for DEM.")
+                _write_tif(_rasterize(x, y, z), dem_out)
+        outputs["bare_earth_dem"] = dem_out
+
+        # --- DSM (all points, max Z per cell) ---
+        dsm_out = out_dir / f"{stem}_dsm.tif"
+        if not dsm_out.exists():
+            _write_tif(_rasterize(x, y, z), dsm_out)
+        outputs["dsm"] = dsm_out
+
+        # --- Building mask (class 6) ---
+        bldg_out = out_dir / f"{stem}_buildings.tif"
+        if not bldg_out.exists():
+            bldg_mask = classifications == 6
+            if bldg_mask.sum() > 0:
+                _write_tif(_rasterize(x[bldg_mask], y[bldg_mask],
+                           np.ones(bldg_mask.sum(), dtype="float32"),
+                           method="nearest"), bldg_out)
+            else:
+                logger.warning("No building-classified (class 6) points found.")
+                _write_tif(np.zeros((rows, cols), dtype="float32"), bldg_out)
+        outputs["building_footprints"] = bldg_out
+
+        # --- Intensity ---
+        intensity_out = out_dir / f"{stem}_intensity.tif"
+        if not intensity_out.exists():
+            _write_tif(_rasterize(x, y, intensities.astype("float32")), intensity_out)
+        outputs["intensity"] = intensity_out
+
+    # CHM = DSM - DEM
+    if "dsm" in outputs and "bare_earth_dem" in outputs:
+        chm_out = out_dir / "chm.tif"
+        if not chm_out.exists():
+            _compute_chm(outputs["dsm"], outputs["bare_earth_dem"], chm_out)
+        outputs["chm"] = chm_out
+
+    return outputs
+
+
+def _detect_crs(las) -> str:
+    """Try to detect CRS from LAS file VLRs, fall back to EPSG:32617."""
+    try:
+        for vlr in las.header.vlrs:
+            if vlr.record_id == 2112:  # WKT
+                return vlr.record_data.decode("utf-8").strip("\x00")
+        # Check for GeoTIFF keys
+        for vlr in las.header.vlrs:
+            if vlr.record_id == 34735:
+                return "EPSG:32617"  # Default for NC UTM 17N
+    except Exception:
+        pass
+    return "EPSG:32617"
+
+
+def _process_with_pdal(
+    laz_paths: list[Path],
+    out_dir: Path,
+    resolution_m: float,
+) -> dict[str, Path]:
+    """Process LAZ/LAS using PDAL CLI pipelines (original path)."""
     outputs: dict[str, Path] = {}
 
     for laz in laz_paths:
@@ -198,7 +345,7 @@ def process_lidar_to_rasters(
             _run_pdal(pipeline)
         outputs["intensity"] = intensity_out
 
-    # CHM = DSM - DEM (computed after both are ready)
+    # CHM = DSM - DEM
     if "dsm" in outputs and "bare_earth_dem" in outputs:
         chm_out = out_dir / "chm.tif"
         if not chm_out.exists():

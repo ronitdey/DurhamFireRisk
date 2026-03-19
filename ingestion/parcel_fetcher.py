@@ -32,10 +32,6 @@ from ingestion.config_loader import get_paths, get_study_area, load_config
 _DURHAM_PARCEL_URL = (
     "https://gisweb.durhamnc.gov/arcgis/rest/services/PublicWS/Parcels/MapServer/0/query"
 )
-# Orange County parcel REST endpoint
-_ORANGE_PARCEL_URL = (
-    "https://maps.orangecountync.gov/arcgis/rest/services/PropertySearch/MapServer/0/query"
-)
 
 
 def fetch_parcels(
@@ -71,10 +67,6 @@ def fetch_parcels(
     durham = _fetch_arcgis_parcels(_DURHAM_PARCEL_URL, bbox, county="Durham")
     if durham is not None and not durham.empty:
         gdfs.append(durham)
-
-    orange = _fetch_arcgis_parcels(_ORANGE_PARCEL_URL, bbox, county="Orange")
-    if orange is not None and not orange.empty:
-        gdfs.append(orange)
 
     if not gdfs:
         logger.warning("No parcels retrieved. Using synthetic Duke campus parcels.")
