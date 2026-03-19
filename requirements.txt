@@ -19,7 +19,7 @@ planetary-computer>=0.4.0
 # pdal and laspy installed separately (complex C++ deps)
 # pip install pdal or conda install -c conda-forge pdal
 laspy>=2.5.0
-richdem>=2.3.0    # Terrain analysis (slope, aspect, flow routing)
+richdem>=0.3.0    # Terrain analysis (slope, aspect, flow routing)
 
 # Machine learning
 torch>=2.1.0
