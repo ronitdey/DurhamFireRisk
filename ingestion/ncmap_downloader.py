@@ -286,38 +286,37 @@ def _process_with_laspy(
 
 def _detect_crs(las) -> str:
     """
-    Detect CRS from LAS VLRs, falling back to coordinate-range heuristics.
+    Detect CRS from coordinate-range heuristics first, then VLRs.
 
-    NC OneMap LiDAR is delivered in NC State Plane NAD83 US feet (EPSG:2264).
-    UTM Zone 17N (EPSG:32617) eastings for Durham are ~680,000–690,000 m.
-    NC State Plane feet eastings for Durham are ~1,900,000–2,100,000 ft.
+    VLRs in NC OneMap files sometimes embed incorrect EPSG:32617 even though
+    the data is in NC State Plane NAD83 US feet (EPSG:2264). Coordinate ranges
+    are authoritative:
+      - NC State Plane feet (EPSG:2264): eastings ~1,500,000–2,200,000
+      - UTM Zone 17N (EPSG:32617): eastings ~600,000–750,000
     """
-    try:
-        for vlr in las.header.vlrs:
-            if vlr.record_id == 2112:  # WKT record
-                wkt = vlr.record_data.decode("utf-8").strip("\x00")
-                if wkt:
-                    return wkt
-        for vlr in las.header.vlrs:
-            if vlr.record_id == 34736:  # GeoDoubleParamsTag — may contain EPSG
-                pass
-    except Exception:
-        pass
-
-    # Coordinate-range heuristic
+    # Coordinate range check first — more reliable than embedded VLR metadata
     try:
         x_mean = float(las.x.mean())
-        # NC State Plane feet (EPSG:2264): eastings ~1,500,000–2,200,000 ft
         if 1_500_000 < x_mean < 2_200_000:
             logger.info("Detected NC State Plane feet (EPSG:2264) from coordinate range.")
             return "EPSG:2264"
-        # UTM Zone 17N (EPSG:32617): eastings ~600,000–700,000 m
         if 600_000 < x_mean < 750_000:
+            logger.info("Detected UTM Zone 17N (EPSG:32617) from coordinate range.")
             return "EPSG:32617"
     except Exception:
         pass
 
-    logger.warning("Could not detect CRS from LAS file — defaulting to EPSG:2264 (NC State Plane feet).")
+    # Fall back to VLR WKT
+    try:
+        for vlr in las.header.vlrs:
+            if vlr.record_id == 2112:
+                wkt = vlr.record_data.decode("utf-8").strip("\x00")
+                if wkt:
+                    return wkt
+    except Exception:
+        pass
+
+    logger.warning("Could not detect CRS — defaulting to EPSG:2264 (NC State Plane feet).")
     return "EPSG:2264"
 
 
