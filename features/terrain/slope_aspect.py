@@ -140,9 +140,9 @@ def classify_tpi(tpi: np.ndarray) -> np.ndarray:
 # ── Private helpers ──────────────────────────────────────────────────────────
 
 def _load_and_resample_dem(dem_path: Path, resolution_m: float) -> tuple[np.ndarray, dict]:
-    """Load DEM, reproject to UTM if needed, resample to resolution_m."""
+    """Load DEM, reproject to EPSG:32617 (UTM Zone 17N), resample to resolution_m."""
     with rasterio.open(dem_path) as src:
-        target_crs = src.crs if src.crs.is_projected else "EPSG:32617"
+        target_crs = "EPSG:32617"  # Always output in UTM Zone 17N
         transform, width, height = calculate_default_transform(
             src.crs, target_crs, src.width, src.height, *src.bounds,
             resolution=resolution_m
