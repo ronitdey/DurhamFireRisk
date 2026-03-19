@@ -25,7 +25,7 @@ from loguru import logger
 
 from ingestion.config_loader import get_paths, get_study_area, load_config, ensure_dirs
 from ingestion.landfire_fetcher import download_landfire_products, validate_landfire_values
-from ingestion.ncmap_downloader import download_lidar_tiles, process_lidar_to_rasters
+from ingestion.ncmap_downloader import collect_local_laz_files, download_lidar_tiles, process_lidar_to_rasters
 from ingestion.noaa_weather import fetch_hourly_data, build_wind_rose, compute_fire_weather_index
 from ingestion.parcel_fetcher import fetch_parcels, identify_duke_parcels
 
@@ -56,17 +56,20 @@ def run_full_pipeline(colab_mode: bool = False) -> dict[str, bool]:
 
     # 1. LiDAR ─────────────────────────────────────────────────────────────
     logger.info("=" * 60)
-    logger.info("STEP 1: LiDAR Download and Processing")
+    logger.info("STEP 1: LiDAR Processing")
     t0 = time.time()
     try:
-        all_laz: list[Path] = []
-        for county in cfg["lidar"]["counties"]:
-            laz_files = download_lidar_tiles(county, bbox, paths["raw_lidar"])
-            all_laz.extend(laz_files)
+        # Local LAZ files take priority (single-building PoC path)
+        all_laz = collect_local_laz_files(paths["raw_lidar"])
+        if not all_laz:
+            logger.info("No local LAZ files found — attempting NC OneMap download...")
+            for county in cfg["lidar"]["counties"]:
+                laz_files = download_lidar_tiles(county, bbox, paths["raw_lidar"])
+                all_laz.extend(laz_files)
         if all_laz:
             process_lidar_to_rasters(all_laz, paths["processed_terrain"])
-        status["lidar"] = True
-        logger.info(f"LiDAR done in {time.time() - t0:.1f}s")
+        status["lidar"] = len(all_laz) > 0
+        logger.info(f"LiDAR done in {time.time() - t0:.1f}s — {len(all_laz)} file(s)")
     except Exception as e:
         logger.error(f"LiDAR step failed: {e}")
         status["lidar"] = False

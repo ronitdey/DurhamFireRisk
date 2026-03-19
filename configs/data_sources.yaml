@@ -26,23 +26,35 @@ paths:
   validation:
     base: "data/validation"
 
-# Study area bounding box (EPSG:4326, WGS84)
+# Study area: Randolph Residence Hall proof-of-concept
+# 50 Brodie Gym Drive, Durham NC 27705 (Duke East Campus)
+# Bbox is ~1km radius around the building for terrain/fire spread context
 study_area:
-  name: "Durham/Orange County NC - Duke Campus"
+  name: "Randolph Residence Hall - Duke East Campus"
+  # ~1km radius around Randolph Hall (36.00688, -78.91714)
   bbox:
-    xmin: -79.05
-    ymin: 35.93
-    xmax: -78.85
-    ymax: 36.07
+    xmin: -78.928
+    ymin: 35.997
+    xmax: -78.906
+    ymax: 36.016
   crs_output: "EPSG:32617"  # UTM Zone 17N
 
+# Target building for proof-of-concept
+target_building:
+  name: "Randolph Residence Hall"
+  address: "50 Brodie Gym Drive, Durham NC 27705"
+  parcel_id: "RANDOLPH_001"
+  lat: 36.00688194282498
+  lon: -78.91714316573827
+
 # NC OneMap LiDAR
+# For the single-building PoC, place your LAZ file in data/raw/lidar/
+# and the pipeline will auto-discover and process it.
 lidar:
   base_url: "https://www.nconemap.gov/pages/lidar"
   wcs_endpoint: "https://geodata.lib.ncsu.edu/geoserver/ows"
   counties:
     - "Durham"
-    - "Orange"
   resolution_m: 1
   ground_class: 2
   veg_classes: [3, 4, 5]
@@ -90,13 +102,12 @@ weather:
     wind_min_mph: 15
     temp_min_f: 90
 
-# Durham/Orange County Parcels
+# Durham County Parcels
 parcels:
   durham_gis: "https://gisweb.durhamnc.gov/"
-  orange_gis: "https://www.orangecountync.gov/gis"
   duke_osm_relation: 2329870  # OpenStreetMap relation ID for Duke University
 
 # API keys (set as environment variables, not here)
 api_keys:
   noaa_cdo: "${NOAA_CDO_TOKEN}"
-  planetary_computer: "${PC_SDK_SUBSCRIPTION_KEY}"
+  # Planetary Computer NAIP is publicly accessible without a key

@@ -194,41 +194,38 @@ def _find_column(gdf: gpd.GeoDataFrame, candidates: list[str]) -> str | None:
 
 def _synthetic_duke_parcels(crs: str) -> gpd.GeoDataFrame:
     """
-    Return a minimal synthetic parcel GeoDataFrame covering key Duke buildings
-    for development/testing when real parcel data is unavailable.
+    Return a single-parcel GeoDataFrame for Randolph Residence Hall.
+
+    Used as the fallback when county GIS endpoints are unreachable.
+    Coordinates are the verified centroid of the building.
     """
     import shapely.geometry as sg
-
-    # Approximate centroids in WGS84 for key Duke buildings
-    buildings = [
-        {"name": "Duke Chapel", "lon": -78.9403, "lat": 36.0023, "type": "religious"},
-        {"name": "Gross Hall", "lon": -78.9409, "lat": 36.0035, "type": "office"},
-        {"name": "Perkins Library", "lon": -78.9385, "lat": 36.0015, "type": "library"},
-        {"name": "Cameron Indoor Stadium", "lon": -78.9432, "lat": 36.0000, "type": "assembly"},
-        {"name": "Duke Hospital", "lon": -78.9415, "lat": 35.9946, "type": "medical"},
-        {"name": "East Campus Baldwin Auditorium", "lon": -78.9237, "lat": 36.0044, "type": "assembly"},
-    ]
-
     from pyproj import Transformer
-    t = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
 
-    records = []
-    for i, b in enumerate(buildings):
-        cx, cy = t.transform(b["lon"], b["lat"])
-        half = 40  # 80m × 80m placeholder footprint
-        geom = sg.box(cx - half, cy - half, cx + half, cy + half)
-        records.append({
-            "parcel_id": f"DUKE_{i:04d}",
-            "name": b["name"],
-            "land_use": b["type"],
+    # Verified centroid of Randolph Residence Hall, Duke East Campus
+    LON = -78.91714316573827
+    LAT = 36.00688194282498
+
+    t = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+    cx, cy = t.transform(LON, LAT)
+    half = 35  # ~70m × 70m footprint (typical Duke residential hall)
+    geom = sg.box(cx - half, cy - half, cx + half, cy + half)
+
+    gdf = gpd.GeoDataFrame(
+        [{
+            "parcel_id": "RANDOLPH_001",
+            "name": "Randolph Residence Hall",
+            "address": "50 Brodie Gym Drive, Durham NC 27705",
+            "land_use": "residential_dormitory",
             "owner_name": "DUKE UNIVERSITY",
             "is_duke": True,
-            "year_built": 1930 + i * 10,
+            "year_built": 1929,
+            "stories": 4,
             "geometry": geom,
-        })
-
-    gdf = gpd.GeoDataFrame(records, crs=crs)
-    logger.info(f"Created {len(gdf)} synthetic Duke parcels for development.")
+        }],
+        crs=crs,
+    )
+    logger.info("Using Randolph Residence Hall as single-building proof-of-concept parcel.")
     return gdf
 
 

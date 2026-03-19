@@ -1,15 +1,18 @@
 """
 NC OneMap LiDAR downloader and PDAL processing pipeline.
 
-Downloads LAZ point cloud tiles for Durham/Orange County and processes them
-into raster products: bare earth DEM, canopy height model (CHM), building
-footprints, and intensity rasters.
+For the single-building proof-of-concept, place your LAZ file(s) in
+data/raw/lidar/ and the pipeline will discover and process them automatically
+without attempting any network download.
+
+For county-wide ingestion, the downloader queries NC OneMap's WFS tile index.
 
 Usage:
     python ingestion/ncmap_downloader.py
 
 Colab:
     Set COLAB_MODE = True at the top of this file before running on Colab.
+    Upload your LAZ file to /content/drive/MyDrive/DurhamFireRisk/data/raw/lidar/
 """
 
 from __future__ import annotations
@@ -28,6 +31,22 @@ import requests
 from loguru import logger
 
 from ingestion.config_loader import get_paths, get_study_area, load_config
+
+
+def collect_local_laz_files(laz_dir: Path) -> list[Path]:
+    """
+    Scan laz_dir for any pre-placed LAZ/LAS files and return them.
+
+    This is the primary path for the single-building proof-of-concept:
+    place your downloaded LAZ file in data/raw/lidar/ and this function
+    picks it up, bypassing the NC OneMap network download entirely.
+    """
+    laz_dir.mkdir(parents=True, exist_ok=True)
+    found = list(laz_dir.glob("**/*.laz")) + list(laz_dir.glob("**/*.las"))
+    if found:
+        logger.info(f"Found {len(found)} local LAZ/LAS file(s) in {laz_dir}: "
+                    f"{[f.name for f in found]}")
+    return found
 
 
 def download_lidar_tiles(
@@ -319,14 +338,18 @@ def main():
         sa["bbox"]["ymax"],
     )
 
-    all_laz: list[Path] = []
-    for county in cfg["lidar"]["counties"]:
-        laz_files = download_lidar_tiles(
-            county=county,
-            bbox=bbox,
-            out_dir=paths["raw_lidar"],
-        )
-        all_laz.extend(laz_files)
+    # Check for locally placed LAZ files first (single-building PoC path)
+    all_laz = collect_local_laz_files(paths["raw_lidar"])
+
+    if not all_laz:
+        # Fall back to NC OneMap network download
+        for county in cfg["lidar"]["counties"]:
+            laz_files = download_lidar_tiles(
+                county=county,
+                bbox=bbox,
+                out_dir=paths["raw_lidar"],
+            )
+            all_laz.extend(laz_files)
 
     if all_laz:
         rasters = process_lidar_to_rasters(
@@ -336,7 +359,10 @@ def main():
         )
         logger.info(f"Produced rasters: {list(rasters.keys())}")
     else:
-        logger.warning("No LiDAR tiles downloaded. Check network access or tile index.")
+        logger.warning(
+            "No LAZ files found. Place your LAZ file in data/raw/lidar/ "
+            "or check network access to NC OneMap."
+        )
 
 
 if __name__ == "__main__":
