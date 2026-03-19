@@ -62,30 +62,24 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
             collect_local_laz_files, download_lidar_tiles, process_lidar_to_rasters,
         )
 
-        # Delete old rasters to force reprocessing with latest CRS fix
-        for f in paths["processed_terrain"].glob("*.tif"):
-            f.unlink()
-            logger.info(f"Deleted old raster: {f.name}")
-
-        all_laz = collect_local_laz_files(paths["raw_lidar"])
-        if not all_laz:
-            logger.info("No local LAZ files found — attempting NC OneMap download...")
-            for county in cfg["lidar"]["counties"]:
-                laz_files = download_lidar_tiles(county, bbox, paths["raw_lidar"])
-                all_laz.extend(laz_files)
-        if all_laz:
-            lidar_outputs = process_lidar_to_rasters(all_laz, paths["processed_terrain"])
-            outputs["lidar"] = lidar_outputs
-
-            # Verify CRS
-            import rasterio
-            dem_path = lidar_outputs.get("bare_earth_dem")
-            if dem_path and dem_path.exists():
-                with rasterio.open(dem_path) as src:
-                    logger.info(f"DEM CRS: {src.crs}, Bounds: {src.bounds}")
-
-        status["lidar"] = len(all_laz) > 0
-        logger.info(f"LiDAR done in {time.time() - t0:.1f}s — {len(all_laz)} file(s)")
+        # Check if DEM already exists (cached from previous run)
+        existing_dems = list(paths["processed_terrain"].glob("*_dem.tif"))
+        if existing_dems:
+            logger.info(f"LiDAR already processed — {len(existing_dems)} DEM(s) cached, skipping.")
+            outputs["lidar"] = {"bare_earth_dem": existing_dems[0]}
+            status["lidar"] = True
+        else:
+            all_laz = collect_local_laz_files(paths["raw_lidar"])
+            if not all_laz:
+                logger.info("No local LAZ files found — attempting NC OneMap download...")
+                for county in cfg["lidar"]["counties"]:
+                    laz_files = download_lidar_tiles(county, bbox, paths["raw_lidar"])
+                    all_laz.extend(laz_files)
+            if all_laz:
+                lidar_outputs = process_lidar_to_rasters(all_laz, paths["processed_terrain"])
+                outputs["lidar"] = lidar_outputs
+            status["lidar"] = len(all_laz) > 0
+        logger.info(f"LiDAR done in {time.time() - t0:.1f}s")
     except Exception as e:
         logger.error(f"LiDAR step failed: {e}")
         status["lidar"] = False
@@ -185,9 +179,12 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
             dems = list(paths["processed_terrain"].glob("*_dem.tif"))
             dem_path = dems[0] if dems else None
 
-        if dem_path and dem_path.exists():
+        nc_path = paths["processed_terrain"] / "terrain_features.nc"
+        if nc_path.exists():
+            logger.info("Terrain features already cached, skipping.")
+            status["terrain"] = True
+        elif dem_path and dem_path.exists():
             terrain = compute_terrain_features(dem_path)
-            nc_path = paths["processed_terrain"] / "terrain_features.nc"
             terrain.to_netcdf(nc_path)
             outputs["terrain"] = terrain
             status["terrain"] = True
