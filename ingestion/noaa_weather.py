@@ -88,22 +88,27 @@ def fetch_hourly_data(
 def build_wind_rose(
     df: pd.DataFrame,
     fire_weather_only: bool = True,
-    rh_max: float = 25.0,
-    wind_min_mph: float = 15.0,
-    temp_min_f: float = 90.0,
+    rh_max: float = 40.0,
+    wind_min_mph: float = 8.0,
+    temp_min_f: float = 85.0,
     n_sectors: int = 16,
 ) -> dict:
     """
-    Compute a directional wind frequency distribution from hourly data.
+    Compute a directional wind frequency distribution from daily weather data.
+
+    Thresholds are calibrated for daily GHCND summaries (TMAX, mean wind),
+    not hourly obs — daily averages are inherently moderated so the classic
+    hourly thresholds (RH≤25%, wind≥15mph, temp≥90°F) yield zero matches.
+    These daily equivalents capture the same high fire-danger days.
 
     Parameters
     ----------
     df:
-        Hourly weather DataFrame from fetch_hourly_data().
+        Daily weather DataFrame from fetch_hourly_data().
     fire_weather_only:
-        If True, filter to rows meeting all three fire weather thresholds.
+        If True, filter to days meeting all three fire weather thresholds.
     rh_max, wind_min_mph, temp_min_f:
-        Fire weather condition thresholds.
+        Fire weather condition thresholds (daily values).
     n_sectors:
         Number of compass sectors (default 16 = 22.5° each).
 
@@ -111,19 +116,23 @@ def build_wind_rose(
     -------
     dict with keys:
         sectors: list of sector center azimuths (degrees)
-        frequency: fraction of hours in each sector
+        frequency: fraction of days in each sector
         pct_90: 90th percentile wind speed (mph) by sector
         pct_95: 95th percentile wind speed (mph) by sector
         pct_99: 99th percentile wind speed (mph) by sector
-        n_fire_weather_hours: count of qualifying hours
+        n_fire_weather_hours: count of qualifying days
     """
     work = df.copy()
+    temp_col = "temp_f" if "temp_f" in work.columns else None
     if fire_weather_only:
-        work = work[
-            (work["rh_pct"] <= rh_max)
-            & (work["wind_speed_mph"] >= wind_min_mph)
-            & (work["temp_f"] >= temp_min_f)
-        ]
+        mask = pd.Series(True, index=work.index)
+        if "rh_pct" in work.columns:
+            mask &= work["rh_pct"] <= rh_max
+        if "wind_speed_mph" in work.columns:
+            mask &= work["wind_speed_mph"] >= wind_min_mph
+        if temp_col:
+            mask &= work[temp_col] >= temp_min_f
+        work = work[mask]
     if work.empty:
         logger.warning("No fire-weather hours found with given thresholds.")
         return {}

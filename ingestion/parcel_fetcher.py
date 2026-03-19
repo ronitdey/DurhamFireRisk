@@ -62,6 +62,16 @@ def fetch_parcels(
         logger.info(f"Loading cached parcels from {cache_path.name}")
         return gpd.read_file(cache_path)
 
+    # Check for manually placed local files (GeoJSON, Shapefile, GeoPackage)
+    local = _load_local_parcel_file(out_dir)
+    if local is not None:
+        local = local.to_crs(output_crs)
+        local = _clip_to_bbox(local, bbox, output_crs)
+        local = _standardize_schema(local)
+        local.to_file(cache_path, driver="GPKG")
+        logger.info(f"Loaded {len(local)} parcels from local file → {cache_path.name}")
+        return local
+
     gdfs: list[gpd.GeoDataFrame] = []
 
     durham = _fetch_arcgis_parcels(_DURHAM_PARCEL_URL, bbox, county="Durham")
@@ -107,6 +117,27 @@ def identify_duke_parcels(parcels: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     n_duke = parcels["is_duke"].sum()
     logger.info(f"Identified {n_duke} Duke University parcels.")
     return parcels
+
+
+def _load_local_parcel_file(out_dir: Path) -> gpd.GeoDataFrame | None:
+    """
+    Check out_dir for a manually placed parcel file and load it.
+    Accepts GeoJSON, Shapefile (.shp), or GeoPackage (.gpkg).
+    Files with spaces in the name (e.g. from browser downloads) are handled.
+    """
+    for pattern in ["*.geojson", "*.shp", "*.gpkg", "*.json"]:
+        matches = list(out_dir.glob(pattern))
+        # Skip the cache file we write ourselves
+        matches = [m for m in matches if m.name != "parcels_study_area.gpkg"]
+        if matches:
+            path = matches[0]
+            try:
+                gdf = gpd.read_file(path)
+                logger.info(f"Loaded local parcel file: {path.name} ({len(gdf)} features)")
+                return gdf
+            except Exception as e:
+                logger.warning(f"Failed to load {path.name}: {e}")
+    return None
 
 
 def _fetch_arcgis_parcels(

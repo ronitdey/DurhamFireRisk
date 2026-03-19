@@ -44,12 +44,12 @@ _LF_RESULT = (
 # Layer name mapping: short code → LANDFIRE versioned layer name
 # Versions from UI: FBFM40/EVT are LF2020; canopy layers are LF2024
 _LAYER_NAME_MAP = {
-    "FBFM40": "LF2020_FBFM40",
+    "FBFM40": "LF2024_FBFM40",
     "CC":     "LF2024_CC",
     "CH":     "LF2024_CH",
     "CBD":    "LF2024_CBD",
     "CBH":    "LF2024_CBH",
-    "EVT":    "LF2020_EVT",
+    "EVT":    "LF2024_EVT",
 }
 
 
@@ -87,6 +87,9 @@ def download_landfire_products(
     aoi_str = f"{xmin} {ymin} {xmax} {ymax}"
     results: dict[str, Path] = {}
     email = os.environ.get("LANDFIRE_EMAIL", "")
+
+    # Check for any manually placed job-ID TIF (e.g. from LANDFIRE web UI download)
+    _extract_jobid_tif(out_dir, products, output_crs, output_res_m)
 
     # Check if all products already downloaded
     missing = [p for p in products if not (out_dir / f"{p}_10m_utm17n.tif").exists()]
@@ -128,7 +131,7 @@ def download_landfire_products(
     if api_failures >= len(missing) and len(results) < len(products):
         logger.warning(
             "LANDFIRE API unreachable for all products — using synthetic fallback "
-            "(TU5 fuel model, representative of Duke West Campus)."
+            "(TU1 fuel model, representative of Duke East Campus open lawn/hardwood setting)."
         )
         from pyproj import Transformer
         t = Transformer.from_crs("EPSG:4326", output_crs, always_xy=True)
@@ -166,6 +169,54 @@ def _submit_landfire_job(products: list[str], aoi_str: str, email: str) -> str |
         return None
 
 
+def _extract_jobid_tif(
+    out_dir: Path,
+    products: list[str],
+    output_crs: str,
+    output_res_m: int,
+) -> None:
+    """
+    If a LANDFIRE job-ID TIF (e.g. j845f8fb...tif) exists in out_dir,
+    split its bands into per-product files using the product order from
+    the LANDFIRE layer name map.
+    """
+    import rasterio
+
+    expected = {f"{p}_10m_utm17n.tif" for p in products}
+    candidates = [
+        f for f in out_dir.glob("*.tif")
+        if f.name not in expected and not f.stem.startswith("chm")
+    ]
+    if not candidates:
+        return
+
+    src_path = candidates[0]
+    try:
+        with rasterio.open(src_path) as src:
+            n_bands = src.count
+            logger.info(f"Found job-ID TIF {src_path.name} with {n_bands} band(s) — splitting into products.")
+
+            # LANDFIRE delivers bands in the order layers were requested
+            band_to_product = {i + 1: p for i, p in enumerate(products[:n_bands])}
+
+            for band_idx, product in band_to_product.items():
+                final_path = out_dir / f"{product}_10m_utm17n.tif"
+                if final_path.exists():
+                    continue
+                data = src.read(band_idx)
+                profile = src.profile.copy()
+                profile.update(count=1)
+                # Write single-band TIF, then reproject
+                tmp = out_dir / f"_tmp_{product}.tif"
+                with rasterio.open(tmp, "w", **profile) as dst:
+                    dst.write(data, 1)
+                _reproject_raster(tmp, final_path, output_crs, output_res_m, product)
+                tmp.unlink(missing_ok=True)
+                logger.info(f"Extracted band {band_idx} → {final_path.name}")
+    except Exception as e:
+        logger.warning(f"Could not split {src_path.name}: {e}")
+
+
 def create_synthetic_landfire(
     out_dir: Path,
     bbox_utm: tuple[float, float, float, float],
@@ -175,8 +226,9 @@ def create_synthetic_landfire(
     Generate synthetic LANDFIRE-equivalent rasters for the Randolph Hall PoC
     when the LANDFIRE REST API is unavailable.
 
-    Values are representative of Duke West Campus: maintained lawns with mature
-    oak/pine canopy — assigned TU1 (Timber/Understory) fuel model.
+    Values are representative of Duke East Campus (Randolph Hall area): open
+    maintained lawns with scattered mature hardwoods — assigned TU1 (Light
+    Timber/Grass/Shrub) fuel model, code 161 in Scott-Burgan 40.
 
     Parameters
     ----------
@@ -203,14 +255,15 @@ def create_synthetic_landfire(
         "compress": "lzw", "nodata": -9999,
     }
 
-    # Synthetic values representative of Duke West Campus
+    # Synthetic values representative of Duke East Campus (Randolph Hall area):
+    # maintained lawns with scattered mature hardwoods, open residential setting
     synthetic: dict[str, tuple[int, str]] = {
-        "FBFM40": (165, "int16"),   # TU5 — timber/shrub — campus edge/forest interface
-        "CC":     (40,  "int16"),   # 40% canopy cover
-        "CH":     (150, "int16"),   # 15m canopy height (stored as 0.1m units → 150)
-        "CBD":    (8,   "int16"),   # canopy bulk density (0.08 kg/m³ × 100)
-        "CBH":    (20,  "int16"),   # 2m canopy base height (0.1m units)
-        "EVT":    (7296, "int16"),  # Appalachian-Piedmont Oak Forest EVT code
+        "FBFM40": (161, "int16"),   # TU1 — light timber/grass/shrub — open campus with scattered trees
+        "CC":     (25,  "int16"),   # 25% canopy cover (more open than West Campus)
+        "CH":     (120, "int16"),   # 12m canopy height (stored as 0.1m units → 120)
+        "CBD":    (4,   "int16"),   # canopy bulk density (0.04 kg/m³ × 100)
+        "CBH":    (15,  "int16"),   # 1.5m canopy base height (0.1m units)
+        "EVT":    (7292, "int16"),  # Piedmont/Central Hardwood-Pine Forest EVT code
     }
 
     outputs: dict[str, Path] = {}
@@ -370,7 +423,7 @@ def validate_landfire_values(raster_path: Path, product: str) -> bool:
     import rasterio
 
     expected_ranges: dict[str, tuple[float, float]] = {
-        "FBFM40": (1, 99),
+        "FBFM40": (1, 299),  # Scott-Burgan codes: GR=101-107, SH=141-149, TU=161-165, TL=181-189, NB=191-199
         "CC": (0, 100),
         "CH": (0, 3700),  # In units of 0.1m
         "CBD": (0, 60),   # kg/m³ × 100
