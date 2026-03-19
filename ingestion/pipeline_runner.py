@@ -234,8 +234,8 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
         outputs["twins"] = twins
         status["twins"] = len(twins) > 0
         for twin in twins:
-            logger.info(f"  Twin '{twin.name}': risk={twin.risk_score}, "
-                        f"features={len(twin.features)} vars")
+            logger.info(f"  Twin '{twin.name}': risk={twin.composite_risk_score:.1f} "
+                        f"[{twin.risk_category()}]")
         logger.info(f"Twins done in {time.time() - t0:.1f}s — {len(twins)} twin(s)")
     except Exception as e:
         logger.error(f"Twin building failed: {e}")
