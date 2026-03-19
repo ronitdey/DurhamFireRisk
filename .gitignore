@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.coveragexml
+.tox/
+
+# Environment
+.env
+.env.local
+*.env
+venv/
+.venv/
+env/
+
+# Data — raw and processed data are never committed
+data/raw/
+data/processed/
+data/validation/
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/validation/.gitkeep
+
+# Large model files
+*.pt
+*.pth
+*.pkl
+*.joblib
+*.h5
+*.onnx
+*.json.gz
+
+# Logs
+logs/
+*.log
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Secrets (NEVER commit these)
+configs/secrets.yaml
+.env*
+*credentials*
+*_token*

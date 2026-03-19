@@ -1,0 +1,91 @@
+# Model Configuration
+
+# Vision Backbone (CNN-ViT)
+backbone:
+  patch_size_px: 256        # Input patch size in pixels (256x256 @ 0.6m = ~150m x 150m)
+  cnn_out_channels: 256
+  vit_embed_dim: 256
+  vit_depth: 6
+  vit_num_heads: 8
+  vit_mlp_ratio: 4.0
+  dropout: 0.1
+
+# Roof Classification Head
+roof_classifier:
+  num_classes: 8
+  class_names:
+    - "metal_standing_seam"
+    - "metal_corrugated"
+    - "concrete_clay_tile"
+    - "asphalt_shingles"
+    - "wood_shingles_shake"
+    - "built_up_tar_gravel"
+    - "membrane_flat"
+    - "unknown_occluded"
+  # Class weights (inverse frequency, wood shake rare but high risk)
+  class_weights: [0.8, 0.9, 1.0, 0.7, 2.5, 1.1, 1.0, 1.5]
+
+# Vegetation Segmentation Head
+veg_segmenter:
+  num_classes: 40   # Scott-Burgan FBFM40 classes
+  output_resolution_m: 10
+
+# Training
+training:
+  # All training scripts check COLAB_MODE flag at top of file
+  batch_size: 32
+  batch_size_colab: 16      # Smaller batch for Colab T4/A100 memory limits
+  epochs: 50
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  warmup_epochs: 5
+  optimizer: "adamw"
+  scheduler: "cosine"
+  early_stopping_patience: 10
+  grad_clip_norm: 1.0
+
+  # Data augmentation
+  augmentation:
+    horizontal_flip: true
+    vertical_flip: true
+    rotation_degrees: 90
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.1
+    random_crop_scale: [0.8, 1.0]
+
+  # Pre-training stages
+  pretrain_stage1: "imagenet"           # ImageNet initialization
+  pretrain_stage2: "naip_landfire"      # NAIP + LANDFIRE weakly supervised
+  finetune_stage: "labeled_patches"     # Hand-labeled structure patches
+
+# Risk Scoring Model (Gradient Boosted Tree)
+risk_scorer:
+  model_type: "xgboost"
+  wildfire:
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 5
+    scale_pos_weight: 1.0
+  flood:
+    n_estimators: 300
+    max_depth: 5
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+
+# SHAP Attribution
+shap:
+  background_samples: 100
+  explainer_type: "tree"      # tree or deep (deep for NN)
+  waterfall_max_features: 15
+
+# Checkpointing
+checkpoints:
+  save_dir: "data/processed/checkpoints"
+  save_every_n_epochs: 5
+  keep_top_k: 3

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(touch data/raw/lidar/.gitkeep data/raw/imagery/.gitkeep data/raw/landfire/.gitkeep data/raw/dem/.gitkeep data/raw/weather/.gitkeep data/raw/parcels/.gitkeep data/processed/.gitkeep data/validation/.gitkeep)",
+      "Bash(touch ingestion/__init__.py features/__init__.py features/terrain/__init__.py features/vegetation/__init__.py features/structure/__init__.py features/flood/__init__.py models/__init__.py models/vision/__init__.py models/risk/__init__.py models/simulation/__init__.py models/attribution/__init__.py twin/__init__.py visualization/__init__.py api/__init__.py api/endpoints/__init__.py validation/__init__.py tests/__init__.py)",
+      "Bash(touch ingestion/__init__.py features/__init__.py features/terrain/__init__.py features/vegetation/__init__.py features/structure/__init__.py features/flood/__init__.py models/__init__.py models/vision/__init__.py models/risk/__init__.py models/simulation/__init__.py models/attribution/__init__.py twin/__init__.py visualization/__init__.py api/__init__.py validation/__init__.py tests/__init__.py)",
+      "Bash(mkdir -p api/endpoints)",
+      "Bash(touch api/endpoints/__init__.py)"
+    ]
+  }
+}

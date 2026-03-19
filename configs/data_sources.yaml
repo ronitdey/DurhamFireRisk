@@ -1,0 +1,102 @@
+# Data Sources Configuration
+# All paths are relative to project root unless COLAB_MODE=True,
+# in which case colab_root is prepended.
+
+paths:
+  local_root: "."
+  colab_root: "/content/drive/MyDrive/DurhamFireRisk"
+
+  raw:
+    lidar: "data/raw/lidar"
+    imagery: "data/raw/imagery"
+    landfire: "data/raw/landfire"
+    dem: "data/raw/dem"
+    weather: "data/raw/weather"
+    parcels: "data/raw/parcels"
+
+  processed:
+    base: "data/processed"
+    terrain: "data/processed/terrain"
+    vegetation: "data/processed/vegetation"
+    structure: "data/processed/structure"
+    flood: "data/processed/flood"
+    twins: "data/processed/twins"
+    simulations: "data/processed/simulations"
+
+  validation:
+    base: "data/validation"
+
+# Study area bounding box (EPSG:4326, WGS84)
+study_area:
+  name: "Durham/Orange County NC - Duke Campus"
+  bbox:
+    xmin: -79.05
+    ymin: 35.93
+    xmax: -78.85
+    ymax: 36.07
+  crs_output: "EPSG:32617"  # UTM Zone 17N
+
+# NC OneMap LiDAR
+lidar:
+  base_url: "https://www.nconemap.gov/pages/lidar"
+  wcs_endpoint: "https://geodata.lib.ncsu.edu/geoserver/ows"
+  counties:
+    - "Durham"
+    - "Orange"
+  resolution_m: 1
+  ground_class: 2
+  veg_classes: [3, 4, 5]
+  building_class: 6
+
+# NAIP Aerial Imagery
+naip:
+  stac_url: "https://planetarycomputer.microsoft.com/api/stac/v1"
+  collection: "naip"
+  target_year: 2022
+  max_cloud_cover: 10
+  bands: ["red", "green", "blue", "nir"]
+  resolution_m: 0.6
+
+# LANDFIRE
+landfire:
+  api_base: "https://lfps.usgs.gov/arcgis/rest/services/LandfireProductService/GPServer/LandfireProductService"
+  products:
+    - "FBFM40"   # Scott-Burgan 40 Fire Behavior Fuel Models
+    - "CC"       # Canopy Cover
+    - "CH"       # Canopy Height
+    - "CBD"      # Canopy Bulk Density
+    - "CBH"      # Canopy Base Height
+    - "EVT"      # Existing Vegetation Type
+  output_resolution_m: 10
+  output_crs: "EPSG:32617"
+
+# USGS 3DEP DEM
+dem:
+  tnm_api: "https://tnmapi.cr.usgs.gov/api/"
+  product: "1/3 arc-second"
+  resolution_m: 10
+
+# NOAA CDO Weather
+weather:
+  cdo_api: "https://www.ncdc.noaa.gov/cdo-web/api/v2"
+  station_id: "USW00013722"  # RDU International Airport
+  station_name: "RDU"
+  years_history: 10
+  datasets:
+    - "GHCND"   # Daily summaries
+    - "LCD"     # Local Climatological Data (hourly)
+  fire_weather_thresholds:
+    rh_max_pct: 25
+    wind_min_mph: 15
+    temp_min_f: 90
+
+# Durham/Orange County Parcels
+parcels:
+  durham_gis: "https://gisweb.durhamnc.gov/"
+  orange_gis: "https://www.orangecountync.gov/gis"
+  duke_osm_relation: 2329870  # OpenStreetMap relation ID for Duke University
+
+# API keys (set as environment variables, not here)
+api_keys:
+  noaa_cdo: "${NOAA_CDO_TOKEN}"
+  planetary_computer: "${PC_SDK_SUBSCRIPTION_KEY}"

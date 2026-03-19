@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_simulation.py tests/test_ingestion.py tests/test_features.py tests/test_models.py -x -q)",
+      "Bash(python3 -m pytest tests/test_simulation.py tests/test_ingestion.py tests/test_features.py tests/test_models.py -x -q --tb=short)",
+      "Bash(pip3 install:*)",
+      "Bash(python3 -m pytest tests/test_simulation.py tests/test_ingestion.py tests/test_features.py tests/test_models.py -q --tb=short)"
+    ]
+  }
+}

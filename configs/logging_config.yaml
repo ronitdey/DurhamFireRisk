@@ -1,0 +1,38 @@
+# Logging Configuration
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
+    style: "{"
+  simple:
+    format: "{time:HH:mm:ss} | {level} | {message}"
+    style: "{"
+
+handlers:
+  console:
+    sink: "sys.stdout"
+    level: "INFO"
+    format: "{time:HH:mm:ss} | {level: <8} | {message}"
+    colorize: true
+  file:
+    sink: "logs/durham_fire_risk_{time:YYYY-MM-DD}.log"
+    level: "DEBUG"
+    format: "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
+    rotation: "100 MB"
+    retention: "30 days"
+    compression: "zip"
+
+loggers:
+  ingestion:
+    level: "DEBUG"
+  features:
+    level: "DEBUG"
+  models:
+    level: "INFO"
+  simulation:
+    level: "INFO"
+  api:
+    level: "INFO"

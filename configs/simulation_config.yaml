@@ -1,0 +1,114 @@
+# Fire/Flood Simulation Configuration
+
+# Rothermel Fire Spread Physics Constants
+rothermel:
+  # Particle density (lb/ft³) - standard for most wildland fuels
+  rho_p: 32.0
+  # Total mineral content (fraction)
+  S_T: 0.0555
+  # Effective mineral content (fraction)
+  S_e: 0.010
+  # Low heat content of dry fuel (BTU/lb)
+  h: 8000.0
+  # Heat of preignition (BTU/lb)
+  Q_ig: 250.0
+  # Gravitational acceleration (ft/s²)
+  g: 32.174
+
+  # Fuel moisture content defaults by size class (fraction)
+  # Fine fuel moisture is read from FWI; these are fallback values
+  fuel_moisture:
+    M_1hr: 0.05    # 1-hour timelag fuel moisture
+    M_10hr: 0.07   # 10-hour timelag
+    M_100hr: 0.10  # 100-hour timelag
+    M_live_herb: 0.80  # Live herbaceous
+    M_live_wood: 1.00  # Live woody
+
+  # Wind adjustment factor (midflame to 20ft wind)
+  wind_adjustment_factor: 0.4
+
+# Huygens Wavelet Propagation
+spread_simulation:
+  time_step_minutes: 1
+  max_simulation_minutes: 120
+  grid_resolution_m: 10
+  # Number of stochastic simulations for probabilistic output
+  n_monte_carlo: 500
+  # Ignition probability threshold (0-1)
+  ignition_prob_threshold: 0.05
+  # Spotting model parameters
+  spotting:
+    enabled: true
+    max_spotting_distance_m: 2000
+    embers_per_unit_fireline: 50
+    landing_distribution: "lognormal"
+    lognormal_mu: 5.5
+    lognormal_sigma: 1.2
+
+# Wind Field Pre-computation
+wind_field:
+  directions: [0, 45, 90, 135, 180, 225, 270, 315]  # degrees from N
+  speed_bins_mph: [10, 20, 35]   # low, moderate, extreme
+  terrain_multipliers:
+    ridge: 1.4
+    upper_slope: 1.2
+    mid_slope: 1.0
+    valley: 0.6
+  cache_dir: "data/processed/wind_fields"
+
+# Fire Weather Scenarios
+scenarios:
+  worst_case:
+    wind_speed_mph: 35
+    wind_direction_deg: 225    # SW winds most common Red Flag scenario for NC
+    relative_humidity_pct: 15
+    temperature_f: 95
+    fuel_moisture_1hr: 0.04
+    fwi_index: 35
+  moderate:
+    wind_speed_mph: 20
+    wind_direction_deg: 225
+    relative_humidity_pct: 25
+    temperature_f: 85
+    fuel_moisture_1hr: 0.07
+    fwi_index: 20
+  low:
+    wind_speed_mph: 10
+    wind_direction_deg: 180
+    relative_humidity_pct: 40
+    temperature_f: 75
+    fuel_moisture_1hr: 0.12
+    fwi_index: 10
+
+# Ember Transport Parameters (Albini 1979 / Cohen & Stratton 2008)
+ember_transport:
+  # Minimum flame length to produce spotting (ft)
+  min_flame_length_ft: 4.0
+  # Ember size distribution (diameter, cm)
+  ember_diameter_mean_cm: 0.5
+  ember_diameter_std_cm: 0.3
+  # Ignition probability by fuel type at landing
+  landing_ignition_prob:
+    GR1: 0.15
+    GR2: 0.25
+    TL3: 0.20
+    TL8: 0.30
+    TU1: 0.18
+
+# Flood Simulation (HAND Method)
+flood:
+  return_periods: [10, 25, 100]   # years
+  # Manning's roughness by land cover
+  manning_n:
+    open_water: 0.030
+    developed_open: 0.015
+    developed_low: 0.020
+    developed_medium: 0.025
+    developed_high: 0.030
+    forest: 0.150
+    shrub: 0.080
+    herbaceous: 0.035
+  # Flow accumulation threshold for stream delineation (cells)
+  stream_threshold_cells: 1000
+  # Ellerbe Creek USGS gage (for validation)
+  validation_gage: "02086849"
