@@ -8,11 +8,11 @@ A property-level wildfire and flood risk platform built on physics-based simulat
 
 Traditional property risk tools ask: *where is this property?*
 
-This platform asks: *given this property's exact physical characteristics, how would fire or flood actually behave here — and what specific changes would reduce that risk?*
+This platform asks: *given this property's exact physical characteristics, how would fire or flood actually behave here and what specific changes would reduce that risk?*
 
 Those are fundamentally different questions. The first produces a zip-code score. The second produces a mitigation plan with a price tag per risk point reduced.
 
-This is the methodology Stand Insurance applies. This project implements it for Duke's campus and demonstrates it on a real, underexplored geography.
+This project implements it for Duke's campus and demonstrates it on a real, underexplored geography.
 
 ---
 
@@ -155,13 +155,3 @@ duke-climate-risk-engine/
 ├── tests/              # Physics invariant and unit tests
 └── configs/            # All hyperparameters and data source URLs
 ```
-
----
-
-## Stand Insurance Connection
-
-This project applies the first-principles methodology described by Stand Insurance: physics-based simulation of catastrophic peril at the individual property level, with actionable mitigation recommendations tied directly to measurable risk reduction.
-
-The SHAP attribution layer directly mirrors how Stand explains risk to homeowners. The counterfactual engine answers the exact question Stand is built to answer: not just *"what is your risk score"* but *"what changes, and what does each change buy you."*
-
-See `METHODOLOGY.md` for full technical documentation, including a quantitative comparison of property-level vs. location-based risk scoring on the Duke campus dataset.
