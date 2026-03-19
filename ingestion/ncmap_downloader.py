@@ -216,7 +216,13 @@ def _process_with_laspy(
             )
             return grid.astype("float32")
 
+        NODATA = -9999.0
+
         def _write_tif(arr, path):
+            # Replace NaN fill values with nodata sentinel so rasterio
+            # masks them correctly on read (NaN in float32 confuses gradient ops)
+            arr = arr.copy()
+            arr[np.isnan(arr)] = NODATA
             profile = {
                 "driver": "GTiff",
                 "dtype": "float32",
@@ -226,9 +232,7 @@ def _process_with_laspy(
                 "crs": _detect_crs(las),
                 "transform": transform,
                 "compress": "lzw",
-                "tiled": True,
-                "blockxsize": 256,
-                "blockysize": 256,
+                "nodata": NODATA,
             }
             with rasterio.open(path, "w", **profile) as dst:
                 dst.write(arr, 1)
