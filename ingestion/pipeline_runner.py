@@ -184,7 +184,7 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
             logger.info("Terrain features already cached, skipping.")
             status["terrain"] = True
         elif dem_path and dem_path.exists():
-            terrain = compute_terrain_features(dem_path)
+            terrain = compute_terrain_features(dem_path, resolution_m=1.0)
             terrain.to_netcdf(nc_path)
             outputs["terrain"] = terrain
             status["terrain"] = True

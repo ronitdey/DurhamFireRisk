@@ -192,13 +192,19 @@ class TwinBuilder:
             terrain_crs = ds.attrs.get("crs", "EPSG:32617")
             cx, cy = self._reproject_centroid(geom, terrain_crs)
 
+            # Clamp centroid to terrain extent so we sample nearest valid cell
+            cx = float(np.clip(cx, float(ds.x.min()), float(ds.x.max())))
+            cy = float(np.clip(cy, float(ds.y.min()), float(ds.y.max())))
+            logger.debug(f"Terrain query: cx={cx:.1f}, cy={cy:.1f}")
+
             def _interp(var: str, default: float = 0.0) -> float:
                 if var not in ds:
                     return default
                 try:
-                    return float(ds[var].sel(
+                    val = float(ds[var].sel(
                         x=cx, y=cy, method="nearest"
                     ).values)
+                    return val if not np.isnan(val) else default
                 except Exception:
                     return default
 
