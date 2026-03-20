@@ -205,16 +205,39 @@ def _process_with_laspy(
 
         transform = from_bounds(xmin, ymin, xmax, ymax, cols, rows)
 
-        def _rasterize(px, py, pz, method="linear"):
-            """Grid scattered points into a raster using scipy interpolation."""
-            xi = np.linspace(xmin + resolution_m / 2, xmax - resolution_m / 2, cols)
-            yi = np.linspace(ymax - resolution_m / 2, ymin + resolution_m / 2, rows)
-            grid_x, grid_y = np.meshgrid(xi, yi)
-            grid = griddata(
-                np.column_stack([px, py]), pz,
-                (grid_x, grid_y), method=method, fill_value=np.nan,
-            )
-            return grid.astype("float32")
+        def _rasterize(px, py, pz, method="linear", agg="mean"):
+            """Grid scattered points into a raster.
+
+            Uses fast numpy binning for large point clouds (>500k points)
+            and falls back to scipy griddata for smaller ones.
+            """
+            n_pts = len(px)
+            if n_pts > 500_000 or (rows * cols > 1_000_000):
+                # Fast binned rasterization — O(n) instead of O(n log n)
+                col_idx = np.clip(((np.asarray(px) - xmin) / resolution_m).astype(int), 0, cols - 1)
+                row_idx = np.clip(((ymax - np.asarray(py)) / resolution_m).astype(int), 0, rows - 1)
+                flat_idx = row_idx * cols + col_idx
+                pz_arr = np.asarray(pz, dtype="float64")
+
+                grid = np.full(rows * cols, np.nan, dtype="float64")
+                if agg == "mean":
+                    sums = np.bincount(flat_idx, weights=pz_arr, minlength=rows * cols)
+                    counts = np.bincount(flat_idx, minlength=rows * cols)
+                    valid = counts > 0
+                    grid[valid] = sums[valid] / counts[valid]
+                elif agg == "max":
+                    np.maximum.at(grid, flat_idx, pz_arr)
+
+                return grid.reshape(rows, cols).astype("float32")
+            else:
+                xi = np.linspace(xmin + resolution_m / 2, xmax - resolution_m / 2, cols)
+                yi = np.linspace(ymax - resolution_m / 2, ymin + resolution_m / 2, rows)
+                grid_x, grid_y = np.meshgrid(xi, yi)
+                grid = griddata(
+                    np.column_stack([px, py]), pz,
+                    (grid_x, grid_y), method=method, fill_value=np.nan,
+                )
+                return grid.astype("float32")
 
         NODATA = -9999.0
 
@@ -238,7 +261,20 @@ def _process_with_laspy(
                 dst.write(arr, 1)
             logger.info(f"Wrote {path.name} ({rows}x{cols})")
 
+        import time as _time
+
+        raster_steps = [
+            ("Ground DEM", "bare_earth_dem"),
+            ("DSM", "dsm"),
+            ("Building mask", "building_footprints"),
+            ("Intensity", "intensity"),
+        ]
+        n_steps = len(raster_steps)
+        logger.info(f"  {len(x):,} points → {rows}x{cols} grid ({n_steps} rasters to produce)")
+
         # --- Ground DEM (class 2) ---
+        logger.info(f"  [1/{n_steps}] Rasterizing Ground DEM...")
+        t_step = _time.time()
         dem_out = out_dir / f"{stem}_dem.tif"
         if not dem_out.exists():
             ground = classifications == 2
@@ -247,15 +283,25 @@ def _process_with_laspy(
             else:
                 logger.warning("Few ground-classified points; using all points for DEM.")
                 _write_tif(_rasterize(x, y, z), dem_out)
+        else:
+            logger.info(f"    cached, skipping")
         outputs["bare_earth_dem"] = dem_out
+        logger.info(f"    done in {_time.time() - t_step:.1f}s")
 
         # --- DSM (all points, max Z per cell) ---
+        logger.info(f"  [2/{n_steps}] Rasterizing DSM...")
+        t_step = _time.time()
         dsm_out = out_dir / f"{stem}_dsm.tif"
         if not dsm_out.exists():
             _write_tif(_rasterize(x, y, z), dsm_out)
+        else:
+            logger.info(f"    cached, skipping")
         outputs["dsm"] = dsm_out
+        logger.info(f"    done in {_time.time() - t_step:.1f}s")
 
         # --- Building mask (class 6) ---
+        logger.info(f"  [3/{n_steps}] Rasterizing Building mask...")
+        t_step = _time.time()
         bldg_out = out_dir / f"{stem}_buildings.tif"
         if not bldg_out.exists():
             bldg_mask = classifications == 6
@@ -266,13 +312,21 @@ def _process_with_laspy(
             else:
                 logger.warning("No building-classified (class 6) points found.")
                 _write_tif(np.zeros((rows, cols), dtype="float32"), bldg_out)
+        else:
+            logger.info(f"    cached, skipping")
         outputs["building_footprints"] = bldg_out
+        logger.info(f"    done in {_time.time() - t_step:.1f}s")
 
         # --- Intensity ---
+        logger.info(f"  [4/{n_steps}] Rasterizing Intensity...")
+        t_step = _time.time()
         intensity_out = out_dir / f"{stem}_intensity.tif"
         if not intensity_out.exists():
             _write_tif(_rasterize(x, y, intensities.astype("float32")), intensity_out)
+        else:
+            logger.info(f"    cached, skipping")
         outputs["intensity"] = intensity_out
+        logger.info(f"    done in {_time.time() - t_step:.1f}s")
 
     # CHM = DSM - DEM
     if "dsm" in outputs and "bare_earth_dem" in outputs:
