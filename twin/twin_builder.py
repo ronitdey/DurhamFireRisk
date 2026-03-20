@@ -155,11 +155,15 @@ class TwinBuilder:
 
         # Filter buildings to East Campus boundary
         if self._parcels is not None and len(self._parcels) > 1:
-            from shapely.geometry import box as shapely_box
+            from shapely.geometry import Polygon as shapely_Polygon
 
-            # East Campus quad — bounded by Campus Dr (N), Main St (S),
-            # Broad St / fields (W), Buchanan Blvd area (E)
-            campus_bounds = shapely_box(-78.920, 36.002, -78.911, 36.009)
+            # East Campus quad — four user-verified corner points
+            campus_bounds = shapely_Polygon([
+                (-78.91275632384765, 36.004607239106264),  # Bottom Right
+                (-78.9128644673354,  36.0094479172421),    # Top Right
+                (-78.91945839108433, 36.00982136686238),   # Top Left
+                (-78.91969471690183, 36.005099592797364),  # Bottom Left
+            ])
             parcels_wgs = self._parcels.to_crs("EPSG:4326")
             in_campus = parcels_wgs.geometry.centroid.within(campus_bounds)
             n_before = len(self._parcels)

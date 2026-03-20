@@ -183,18 +183,16 @@ class RothermelFireSpread:
         # Weighted moisture of live fuel
         M_live = (w_lh * weather.M_lh + w_lw * weather.M_lw) / max(w_lh + w_lw, 1e-8)
 
-        # Effective moisture for damping (weighted dead)
+        # Effective dead fuel moisture (weighted by load fraction)
         M_eff_dead = (
             (w_1 * weather.M_1hr + w_10 * weather.M_10hr + w_100 * weather.M_100hr)
             / max(w_total_dead, 1e-8)
         )
-        M_eff = (
-            (w_total_dead * M_eff_dead + (w_lh + w_lw) * M_live)
-            / max(w_total, 1e-8)
-        )
 
         # Moisture damping coefficient η_M
-        r_M = min(M_eff / fuel.M_x, 1.0)
+        # M_x from fuel model applies to dead fuel component only
+        # (live fuel has a much higher effective extinction moisture)
+        r_M = min(M_eff_dead / fuel.M_x, 1.0)
         eta_M = max(0, 1 - 2.59 * r_M + 5.11 * r_M ** 2 - 3.52 * r_M ** 3)
 
         # Mineral damping coefficient η_S
@@ -326,8 +324,10 @@ class FireSpreadSimulator:
                     r_m_per_min = r_ft_per_min * 0.3048
 
                     # Apply wind direction: spread faster in downwind direction
+                    # wind_dir = direction wind blows FROM; fire goes opposite
                     bearing = math.degrees(math.atan2(dc, -dr)) % 360
-                    angle_diff = abs(bearing - self.wind_dir)
+                    downwind = (self.wind_dir + 180) % 360
+                    angle_diff = abs(bearing - downwind)
                     if angle_diff > 180:
                         angle_diff = 360 - angle_diff
                     wind_factor = math.cos(math.radians(angle_diff))

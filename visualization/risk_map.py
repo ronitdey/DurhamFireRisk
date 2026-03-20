@@ -175,23 +175,28 @@ def _add_fire_spread_layer(m: folium.Map, paths: dict) -> None:
             continue
         try:
             cs = ax.contour(xs, ys, toa_filled, levels=[time_min])
-            for collection in cs.collections:
-                for path in collection.get_paths():
-                    verts = path.vertices
-                    if len(verts) < 3:
-                        continue
-                    lons, lats = transformer.transform(verts[:, 0], verts[:, 1])
-                    coords = list(zip(lats.tolist(), lons.tolist()))
-                    kw = {
-                        "color": color,
-                        "weight": weight,
-                        "opacity": 0.85,
-                        "tooltip": f"Fire arrives in {time_min} min",
-                    }
-                    if dash:
-                        kw["dash_array"] = dash
-                    folium.PolyLine(coords, **kw).add_to(iso_layer)
-                    n_lines += 1
+            # matplotlib 3.8+ removed cs.collections; use cs.allsegs instead
+            segments = cs.allsegs[0] if hasattr(cs, "allsegs") else []
+            if not segments and hasattr(cs, "collections"):
+                # Fallback for older matplotlib
+                for collection in cs.collections:
+                    for path in collection.get_paths():
+                        segments.append(path.vertices)
+            for verts in segments:
+                if len(verts) < 3:
+                    continue
+                lons, lats = transformer.transform(verts[:, 0], verts[:, 1])
+                coords = list(zip(lats.tolist(), lons.tolist()))
+                kw = {
+                    "color": color,
+                    "weight": weight,
+                    "opacity": 0.85,
+                    "tooltip": f"Fire arrives in {time_min} min",
+                }
+                if dash:
+                    kw["dash_array"] = dash
+                folium.PolyLine(coords, **kw).add_to(iso_layer)
+                n_lines += 1
         except Exception as e:
             logger.warning(f"Contour extraction failed at {time_min}min: {e}")
         ax.clear()
