@@ -87,3 +87,12 @@ This iteration was a deep dive into coordinate reference systems — one of thos
 - Add defensible space zones and Duke-owned property outlines to the map.
 - Improve GeoDataFrame conversion to include additional risk factors and attributes.
 
+---
+
+## v0.8 - 2026-03-20
+
+
+- Implemented `fetch_osm_buildings` to retrieve building data from OpenStreetMap.
+- Updated pipeline to prefer OSM building footprints over county parcel boundaries.
+- Adjusted TwinBuilder to load OSM buildings if available, enhancing data accuracy.
+

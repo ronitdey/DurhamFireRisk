@@ -215,6 +215,106 @@ def _find_column(gdf: gpd.GeoDataFrame, candidates: list[str]) -> str | None:
     return None
 
 
+def fetch_osm_buildings(
+    bbox: tuple[float, float, float, float],
+    out_dir: Path,
+    output_crs: str = "EPSG:32617",
+) -> gpd.GeoDataFrame:
+    """
+    Fetch individual building footprints from OpenStreetMap via Overpass API.
+
+    Returns a GeoDataFrame with one row per building, schema-compatible
+    with the parcel GeoDataFrame used by TwinBuilder.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = out_dir / "buildings_osm.gpkg"
+
+    if cache_path.exists():
+        logger.info(f"Loading cached OSM buildings from {cache_path.name}")
+        return gpd.read_file(cache_path)
+
+    xmin, ymin, xmax, ymax = bbox
+    query = (
+        f"[out:json][timeout:30];"
+        f'(way["building"]({ymin},{xmin},{ymax},{xmax}););'
+        f"out body;>;out skel qt;"
+    )
+
+    try:
+        resp = requests.post(
+            "https://overpass-api.de/api/interpreter",
+            data={"data": query},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        logger.warning(f"OSM building fetch failed: {e}")
+        return gpd.GeoDataFrame()
+
+    # Parse nodes
+    nodes = {}
+    for elem in data["elements"]:
+        if elem["type"] == "node":
+            nodes[elem["id"]] = (elem["lon"], elem["lat"])
+
+    # Parse ways into building polygons
+    import shapely.geometry as sg
+
+    features = []
+    for elem in data["elements"]:
+        if elem["type"] != "way" or "tags" not in elem:
+            continue
+        coords = [nodes[n] for n in elem.get("nodes", []) if n in nodes]
+        if len(coords) < 4:
+            continue
+        try:
+            poly = sg.Polygon(coords)
+            if not poly.is_valid or poly.area == 0:
+                continue
+        except Exception:
+            continue
+
+        tags = elem.get("tags", {})
+        try:
+            stories = int(float(tags.get("building:levels", "2")))
+        except (ValueError, TypeError):
+            stories = 2
+
+        features.append({
+            "geometry": poly,
+            "parcel_id": f"OSM_{elem['id']}",
+            "name": tags.get("name", ""),
+            "address": tags.get("addr:street", ""),
+            "land_use": tags.get("building", "yes"),
+            "owner_name": tags.get("operator", ""),
+            "is_duke": bool(
+                "duke" in tags.get("operator", "").lower()
+                or "duke" in tags.get("name", "").lower()
+            ),
+            "year_built": 0,
+            "stories": stories,
+        })
+
+    if not features:
+        logger.warning("No buildings found in OSM for study area.")
+        return gpd.GeoDataFrame()
+
+    gdf = gpd.GeoDataFrame(features, crs="EPSG:4326")
+    gdf = gdf.to_crs(output_crs)
+
+    # Filter out tiny structures (sheds, garages < 20 m²)
+    gdf = gdf[gdf.geometry.area > 20].reset_index(drop=True)
+
+    # Compute building area in sq ft
+    gdf["building_sf"] = gdf.geometry.area * 10.764
+    gdf["assessed_value"] = 0
+
+    gdf.to_file(cache_path, driver="GPKG")
+    logger.info(f"Fetched {len(gdf)} building footprints from OSM.")
+    return gdf
+
+
 def _synthetic_duke_parcels(crs: str) -> gpd.GeoDataFrame:
     """
     Return a single-parcel GeoDataFrame for Randolph Residence Hall.

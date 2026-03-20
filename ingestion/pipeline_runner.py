@@ -154,17 +154,26 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
         logger.error(f"Weather step failed: {e}")
         status["weather"] = False
 
-    # 4. Parcels ───────────────────────────────────────────────────────────
+    # 4. Building Footprints & Parcels ─────────────────────────────────────
     logger.info("=" * 60)
-    logger.info("STEP 4: Parcel Boundaries")
+    logger.info("STEP 4: Building Footprints (OSM) & Parcels")
     t0 = time.time()
     try:
-        from ingestion.parcel_fetcher import fetch_parcels, identify_duke_parcels
+        from ingestion.parcel_fetcher import (
+            fetch_osm_buildings, fetch_parcels, identify_duke_parcels,
+        )
 
-        parcels = fetch_parcels(bbox, paths["raw_parcels"])
-        parcels = identify_duke_parcels(parcels)
-        status["parcels"] = len(parcels) > 0
-        logger.info(f"Parcels done in {time.time() - t0:.1f}s — {len(parcels)} parcels")
+        # Prefer individual OSM building footprints over county parcel boundaries
+        buildings = fetch_osm_buildings(bbox, paths["raw_parcels"])
+        if not buildings.empty:
+            logger.info(f"Using {len(buildings)} OSM building footprints")
+            status["parcels"] = True
+        else:
+            # Fall back to county parcel boundaries
+            parcels = fetch_parcels(bbox, paths["raw_parcels"])
+            parcels = identify_duke_parcels(parcels)
+            status["parcels"] = len(parcels) > 0
+        logger.info(f"Buildings/parcels done in {time.time() - t0:.1f}s")
     except Exception as e:
         logger.error(f"Parcels step failed: {e}")
         status["parcels"] = False

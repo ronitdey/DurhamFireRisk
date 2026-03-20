@@ -140,12 +140,15 @@ class TwinBuilder:
             self._sim_ds = xr.open_dataset(sim_path)
             logger.info("Fire simulation results loaded.")
 
-        # Parcels
+        # Buildings / Parcels — prefer individual OSM footprints
+        buildings_path = self.paths["raw_parcels"] / "buildings_osm.gpkg"
         parcel_path = self.paths["raw_parcels"] / "parcels_study_area.gpkg"
-        if parcel_path.exists():
+        if buildings_path.exists():
+            self._parcels = gpd.read_file(buildings_path)
+            logger.info(f"Loaded {len(self._parcels)} OSM building footprints.")
+        elif parcel_path.exists():
             self._parcels = gpd.read_file(parcel_path)
         else:
-            # Use synthetic Duke parcels for development
             from ingestion.parcel_fetcher import _synthetic_duke_parcels
             self._parcels = _synthetic_duke_parcels("EPSG:32617")
             logger.warning("Using synthetic Duke parcels (real parcel data not found).")
@@ -164,6 +167,7 @@ class TwinBuilder:
             is_duke_owned=bool(parcel_row.get("is_duke", False)),
             structure_type=str(parcel_row.get("land_use", "unknown")),
             year_built=int(parcel_row.get("year_built", 1975) or 1975),
+            stories=int(parcel_row.get("stories", 1) or 1),
             building_sf=float(parcel_row.get("building_sf", 0) or 0),
             assessed_value=float(parcel_row.get("assessed_value", 0) or 0),
         )
