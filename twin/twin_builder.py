@@ -174,11 +174,23 @@ class TwinBuilder:
 
         return twin
 
+    def _reproject_centroid(self, geom, target_crs_str: str):
+        """Reproject a geometry's centroid to the target CRS. Returns (x, y)."""
+        from pyproj import Transformer
+        parcel_crs = self._parcels.crs
+        if parcel_crs is not None and str(parcel_crs) != target_crs_str:
+            transformer = Transformer.from_crs(str(parcel_crs), target_crs_str, always_xy=True)
+            cx, cy = transformer.transform(geom.centroid.x, geom.centroid.y)
+        else:
+            cx, cy = geom.centroid.x, geom.centroid.y
+        return cx, cy
+
     def _populate_terrain(self, twin: PropertyTwin, geom) -> None:
         """Extract parcel-level terrain stats from the terrain Dataset."""
         try:
-            cx, cy = geom.centroid.x, geom.centroid.y
             ds = self._terrain_ds
+            terrain_crs = ds.attrs.get("crs", "EPSG:32617")
+            cx, cy = self._reproject_centroid(geom, terrain_crs)
 
             def _interp(var: str, default: float = 0.0) -> float:
                 if var not in ds:
@@ -215,8 +227,9 @@ class TwinBuilder:
     def _populate_vegetation(self, twin: PropertyTwin, geom) -> None:
         """Extract parcel-level vegetation stats from the veg Dataset."""
         try:
-            cx, cy = geom.centroid.x, geom.centroid.y
             ds = self._veg_ds
+            veg_crs = ds.attrs.get("crs", "EPSG:32617") if ds.attrs else "EPSG:32617"
+            cx, cy = self._reproject_centroid(geom, veg_crs)
 
             def _interp(var: str, default: float = 0.0) -> float:
                 if var not in ds:

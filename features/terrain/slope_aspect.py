@@ -47,6 +47,11 @@ def compute_terrain_features(dem_path: Path, resolution_m: float = 10.0) -> xr.D
     northness = np.cos(np.radians(aspect))
     eastness = np.sin(np.radians(aspect))
 
+    # Build georeferenced x/y coordinate arrays from the rasterio transform
+    transform = meta["transform"]
+    xs = np.array([transform.c + (col + 0.5) * transform.a for col in range(meta["width"])])
+    ys = np.array([transform.f + (row + 0.5) * transform.e for row in range(meta["height"])])
+
     ds = xr.Dataset(
         {
             "slope_deg": (["y", "x"], slope.astype("float32")),
@@ -58,6 +63,7 @@ def compute_terrain_features(dem_path: Path, resolution_m: float = 10.0) -> xr.D
             "heat_load_index": (["y", "x"], hli.astype("float32")),
             "twi": (["y", "x"], twi.astype("float32")),
         },
+        coords={"x": xs, "y": ys},
         attrs={
             "crs": str(meta["crs"]),
             "transform": str(meta["transform"]),
