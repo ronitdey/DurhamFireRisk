@@ -77,3 +77,13 @@ This iteration was a deep dive into coordinate reference systems — one of thos
 - Built a 3D Plotly visualization: DEM surface + fire spread heatmap + building extrusions from the CHM. First time seeing the full engine output visually.
 - **Next:** NAIP imagery for real vegetation indices, per-building parcels, CNN-ViT roof classifier
 
+---
+
+## v0.7 - 2026-03-20
+
+
+- Implement step for generating an interactive risk map using Folium, including satellite imagery and fire spread isochrones.
+- Update risk scoring details in popups with breakdowns for terrain, vegetation, structure, and exposure.
+- Add defensible space zones and Duke-owned property outlines to the map.
+- Improve GeoDataFrame conversion to include additional risk factors and attributes.
+

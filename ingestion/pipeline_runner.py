@@ -347,6 +347,28 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
         logger.error(f"Twin building failed: {e}")
         status["twins"] = False
 
+    # 9. Risk Map Visualization ────────────────────────────────────────────
+    logger.info("=" * 60)
+    logger.info("STEP 9: Interactive Risk Map")
+    t0 = time.time()
+    try:
+        from visualization.risk_map import build_risk_map, twins_to_geodataframe
+
+        twins = outputs.get("twins", [])
+        if twins:
+            gdf = twins_to_geodataframe(twins)
+            map_path = paths["processed"] / "campus_risk_map.html"
+            build_risk_map(gdf, map_path, paths=paths)
+            outputs["risk_map_path"] = map_path
+            status["visualization"] = True
+            logger.info(f"Map done in {time.time() - t0:.1f}s → {map_path}")
+        else:
+            logger.warning("No twins — skipping visualization")
+            status["visualization"] = False
+    except Exception as e:
+        logger.error(f"Visualization failed: {e}")
+        status["visualization"] = False
+
     # Summary ──────────────────────────────────────────────────────────────
     logger.info("=" * 60)
     logger.info("PIPELINE COMPLETE")
