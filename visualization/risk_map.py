@@ -103,7 +103,6 @@ def build_risk_map(
         _add_fire_spread_layer(m, paths)
     _add_building_risk_layer(m, twins_gdf, colormap)
     _add_defensible_space_layer(m, twins_gdf)
-    _add_duke_boundary_layer(m, twins_gdf)
 
     # ── Controls & plugins ────────────────────────────────────────────────────
     folium.LayerControl(collapsed=False).add_to(m)
@@ -162,7 +161,14 @@ def _add_fire_spread_layer(m: folium.Map, paths: dict) -> None:
     toa_filled = np.nan_to_num(toa, nan=9999.0)
     valid_toa = toa[~np.isnan(toa)]
     max_toa = float(valid_toa.max()) if valid_toa.size > 0 else 0
+    n_burned = int((~np.isnan(toa)).sum())
+    logger.info(
+        f"Simulation: {n_burned}/{toa.size} burned cells, "
+        f"max arrival={max_toa:.0f}min, x=[{xs.min():.0f},{xs.max():.0f}], "
+        f"y=[{ys.min():.0f},{ys.max():.0f}]"
+    )
 
+    n_lines = 0
     fig, ax = plt.subplots()
     for time_min, color, weight, dash in _ISOCHRONE_STYLE:
         if max_toa < 1 or time_min > max_toa * 1.5:
@@ -185,11 +191,13 @@ def _add_fire_spread_layer(m: folium.Map, paths: dict) -> None:
                     if dash:
                         kw["dash_array"] = dash
                     folium.PolyLine(coords, **kw).add_to(iso_layer)
-        except Exception:
-            pass
+                    n_lines += 1
+        except Exception as e:
+            logger.warning(f"Contour extraction failed at {time_min}min: {e}")
         ax.clear()
     plt.close(fig)
     iso_layer.add_to(m)
+    logger.info(f"Added {n_lines} isochrone polylines.")
 
     # ── Fireline intensity heatmap ────────────────────────────────────────
     if intensity is not None:
