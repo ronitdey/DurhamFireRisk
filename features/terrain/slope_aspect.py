@@ -167,6 +167,17 @@ def _load_and_resample_dem(dem_path: Path, resolution_m: float) -> tuple[np.ndar
             resampling=Resampling.bilinear,
         )
     dem_arr[dem_arr < -9000] = np.nan
+
+    # Fill NaN gaps using nearest-neighbor interpolation.
+    # Binned rasterization leaves empty cells; gradients need continuous data.
+    nan_mask = np.isnan(dem_arr)
+    nan_frac = nan_mask.sum() / dem_arr.size
+    if nan_frac > 0.01:
+        from scipy.ndimage import distance_transform_edt
+        indices = distance_transform_edt(nan_mask, return_distances=False, return_indices=True)
+        dem_arr = dem_arr[tuple(indices)]
+        logger.info(f"DEM gap-filled {nan_frac:.1%} NaN cells via nearest-neighbor.")
+
     return dem_arr, meta
 
 
