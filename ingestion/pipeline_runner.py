@@ -299,18 +299,21 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
                     },
                 )
 
-                # Ignite from the upwind edge (SW corner for SW winds)
+                # Ignite from the SW tree line near East Campus
                 rows, cols = slope_arr.shape
-                wind_rad = math.radians(params["wind_direction_deg"])
-                # wind_direction_deg = direction wind blows FROM
-                # cos>0 → from north → ignite at north (low row in north-up raster)
-                # sin>0 → from east  → ignite at east (high col)
-                ign_row = int(rows * 0.15) if math.cos(wind_rad) > 0 else int(rows * 0.85)
-                ign_col = int(cols * 0.85) if math.sin(wind_rad) > 0 else int(cols * 0.15)
+                ign_lat, ign_lon = 36.00631175301652, -78.91858266750188
+                from pyproj import Transformer as _Transformer
+                _t = _Transformer.from_crs("EPSG:4326", terrain.attrs.get("crs", "EPSG:32617"), always_xy=True)
+                ign_x, ign_y = _t.transform(ign_lon, ign_lat)
+                # Map UTM coordinate to grid row/col
+                xs, ys = terrain.x.values, terrain.y.values
+                ign_col = int(np.argmin(np.abs(xs - ign_x)))
+                ign_row = int(np.argmin(np.abs(ys - ign_y)))
                 ign_row = max(0, min(rows - 1, ign_row))
                 ign_col = max(0, min(cols - 1, ign_col))
+                logger.info(f"  Ignition at ({ign_lat:.4f}, {ign_lon:.4f}) → row={ign_row}, col={ign_col}")
 
-                result = sim.simulate_spread(ign_row, ign_col, max_time_minutes=120)
+                result = sim.simulate_spread(ign_row, ign_col, max_time_minutes=180)
                 all_results[name] = result
 
             # Save worst-case scenario as the primary output
