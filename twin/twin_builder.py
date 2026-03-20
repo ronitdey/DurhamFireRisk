@@ -172,6 +172,9 @@ class TwinBuilder:
         # Structure (vision model or default)
         self._populate_structure(twin, parcel_row)
 
+        # Risk scoring
+        self._score_risk(twin)
+
         return twin
 
     def _reproject_centroid(self, geom, target_crs_str: str):
@@ -192,12 +195,23 @@ class TwinBuilder:
             terrain_crs = ds.attrs.get("crs", "EPSG:32617")
             cx, cy = self._reproject_centroid(geom, terrain_crs)
 
-            # Clamp centroid to terrain extent so we sample nearest valid cell
-            cx = float(np.clip(cx, float(ds.x.min()), float(ds.x.max())))
-            cy = float(np.clip(cy, float(ds.y.min()), float(ds.y.max())))
-            logger.debug(f"Terrain query: cx={cx:.1f}, cy={cy:.1f}")
+            # Check if centroid falls within terrain extent
+            in_extent = (
+                float(ds.x.min()) <= cx <= float(ds.x.max()) and
+                float(ds.y.min()) <= cy <= float(ds.y.max())
+            )
 
-            def _interp(var: str, default: float = 0.0) -> float:
+            def _mean(var: str, default: float = 0.0) -> float:
+                """Spatial mean of all valid cells — used when LiDAR tile
+                is smaller than the parcel."""
+                if var not in ds:
+                    return default
+                vals = ds[var].values
+                valid = vals[~np.isnan(vals)]
+                return float(valid.mean()) if valid.size > 0 else default
+
+            def _point(var: str, default: float = 0.0) -> float:
+                """Point query at centroid."""
                 if var not in ds:
                     return default
                 try:
@@ -207,6 +221,14 @@ class TwinBuilder:
                     return val if not np.isnan(val) else default
                 except Exception:
                     return default
+
+            # Use point query if centroid is inside, otherwise spatial mean
+            _interp = _point if in_extent else _mean
+            if not in_extent:
+                logger.info(
+                    f"Parcel {twin.parcel_id} centroid outside terrain extent — "
+                    f"using spatial mean of all valid cells."
+                )
 
             twin.slope_degrees = _interp("slope_deg")
             twin.aspect_degrees = _interp("aspect_deg")
@@ -283,6 +305,17 @@ class TwinBuilder:
 
         twin.vent_screening_status = "unknown"
         twin.deck_material = "unknown"
+
+    def _score_risk(self, twin: PropertyTwin) -> None:
+        """Compute wildfire and composite risk scores."""
+        try:
+            from models.risk.wildfire_scorer import WildfireScorer
+            from dataclasses import asdict
+            scorer = WildfireScorer()
+            twin.wildfire_risk_score = scorer.score_twin(asdict(twin))
+            twin.composite_risk_score = twin.wildfire_risk_score
+        except Exception as e:
+            logger.debug(f"Risk scoring error for {twin.parcel_id}: {e}")
 
 
 def build_all_twins(colab_mode: bool = False, save: bool = True) -> list[PropertyTwin]:
