@@ -302,9 +302,11 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
                 # Ignite from the upwind edge (SW corner for SW winds)
                 rows, cols = slope_arr.shape
                 wind_rad = math.radians(params["wind_direction_deg"])
-                # Fire starts upwind: if wind blows FROM SW, ignite at SW corner
-                ign_row = int(rows * 0.85) if math.cos(wind_rad) > 0 else int(rows * 0.15)
-                ign_col = int(cols * 0.15) if math.sin(wind_rad) > 0 else int(cols * 0.85)
+                # wind_direction_deg = direction wind blows FROM
+                # cos>0 → from north → ignite at north (low row in north-up raster)
+                # sin>0 → from east  → ignite at east (high col)
+                ign_row = int(rows * 0.15) if math.cos(wind_rad) > 0 else int(rows * 0.85)
+                ign_col = int(cols * 0.85) if math.sin(wind_rad) > 0 else int(cols * 0.15)
                 ign_row = max(0, min(rows - 1, ign_row))
                 ign_col = max(0, min(cols - 1, ign_col))
 
