@@ -67,6 +67,7 @@ class TwinBuilder:
         self._fuel_da: Optional[xr.DataArray] = None
         self._fuel_params: Optional[dict] = None
         self._parcels: Optional[gpd.GeoDataFrame] = None
+        self._sim_ds: Optional[xr.Dataset] = None
 
     def build_all_twins(self, save: bool = True) -> list[PropertyTwin]:
         """
@@ -133,6 +134,12 @@ class TwinBuilder:
             self._fuel_da, self._fuel_params = map_fuel_models(fbfm40_path)
             logger.info("Fuel models loaded.")
 
+        # Fire simulation results
+        sim_path = self.paths["processed_terrain"] / "fire_simulation.nc"
+        if sim_path.exists():
+            self._sim_ds = xr.open_dataset(sim_path)
+            logger.info("Fire simulation results loaded.")
+
         # Parcels
         parcel_path = self.paths["raw_parcels"] / "parcels_study_area.gpkg"
         if parcel_path.exists():
@@ -168,6 +175,10 @@ class TwinBuilder:
         # Vegetation features
         if self._veg_ds is not None and geom is not None:
             self._populate_vegetation(twin, geom)
+
+        # Fire simulation results
+        if self._sim_ds is not None and geom is not None:
+            self._populate_simulation(twin, geom)
 
         # Structure (vision model or default)
         self._populate_structure(twin, parcel_row)
@@ -251,6 +262,56 @@ class TwinBuilder:
 
         except Exception as e:
             logger.debug(f"Terrain extraction error for {twin.parcel_id}: {e}")
+
+    def _populate_simulation(self, twin: PropertyTwin, geom) -> None:
+        """Extract fire simulation results for the parcel."""
+        try:
+            ds = self._sim_ds
+            toa = ds["time_of_arrival"].values
+
+            # Check if centroid falls in simulation grid
+            terrain_crs = ds.attrs.get("crs", self._terrain_ds.attrs.get("crs", "EPSG:32617") if self._terrain_ds else "EPSG:32617")
+            cx, cy = self._reproject_centroid(geom, terrain_crs)
+
+            # Check if ds has real coordinates
+            has_coords = ds.x.size > 1 and float(ds.x.max()) > float(ds.x.min())
+            if has_coords:
+                in_extent = (
+                    float(ds.x.min()) <= cx <= float(ds.x.max()) and
+                    float(ds.y.min()) <= cy <= float(ds.y.max())
+                )
+            else:
+                in_extent = False
+
+            if in_extent:
+                # Point query
+                toa_val = float(ds["time_of_arrival"].sel(x=cx, y=cy, method="nearest").values)
+                intensity_val = float(ds["fireline_intensity"].sel(x=cx, y=cy, method="nearest").values)
+            else:
+                # Use spatial statistics over valid cells
+                valid_toa = toa[~np.isnan(toa)]
+                if valid_toa.size > 0:
+                    toa_val = float(np.percentile(valid_toa, 50))
+                    valid_intensity = ds["fireline_intensity"].values
+                    valid_intensity = valid_intensity[valid_intensity > 0]
+                    intensity_val = float(valid_intensity.mean()) if valid_intensity.size > 0 else 0.0
+                else:
+                    toa_val = float("inf")
+                    intensity_val = 0.0
+
+            if not np.isnan(toa_val):
+                twin.fire_arrival_time_p50 = toa_val
+                twin.fire_arrival_time_p90 = toa_val * 1.3  # Approximate without Monte Carlo
+                # Ember exposure: higher intensity and shorter arrival = higher probability
+                if intensity_val > 0 and toa_val < float("inf"):
+                    twin.ember_exposure_probability = min(1.0, intensity_val / 500.0)
+                logger.debug(
+                    f"Parcel {twin.parcel_id}: fire arrival={toa_val:.1f}min, "
+                    f"intensity={intensity_val:.0f} BTU/ft/s"
+                )
+
+        except Exception as e:
+            logger.debug(f"Simulation extraction error for {twin.parcel_id}: {e}")
 
     def _populate_vegetation(self, twin: PropertyTwin, geom) -> None:
         """Extract parcel-level vegetation stats from the veg Dataset."""

@@ -19,10 +19,13 @@ COLAB_MODE = False  # Set to True when running on Google Colab
 
 import argparse
 import json
+import math
 import sys
 import time
 from pathlib import Path
 
+import numpy as np
+import xarray as xr
 from loguru import logger
 
 from ingestion.config_loader import get_paths, get_study_area, load_config, ensure_dirs
@@ -219,9 +222,112 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
         logger.error(f"Fuel classification failed: {e}")
         status["fuels"] = False
 
-    # 7. PropertyTwin ──────────────────────────────────────────────────────
+    # 7. Fire Spread Simulation ─────────────────────────────────────────
     logger.info("=" * 60)
-    logger.info("STEP 7: Build PropertyTwin(s)")
+    logger.info("STEP 7: Fire Spread Simulation")
+    t0 = time.time()
+    try:
+        from models.simulation.fire_spread import FireSpreadSimulator
+        from ingestion.config_loader import load_config as _load_cfg
+
+        sim_cfg = _load_cfg("simulation_config.yaml")
+        nc_path = paths["processed_terrain"] / "terrain_features.nc"
+        sim_out_path = paths["processed_terrain"] / "fire_simulation.nc"
+
+        if sim_out_path.exists():
+            logger.info("Fire simulation already cached, skipping.")
+            outputs["simulation"] = xr.open_dataset(sim_out_path)
+            status["simulation"] = True
+        elif nc_path.exists() and status.get("fuels"):
+            terrain = xr.open_dataset(nc_path)
+            slope_arr = terrain["slope_deg"].values
+            aspect_arr = terrain["aspect_deg"].values
+
+            # Get fuel codes array — use the codes from fuel classification
+            fuel_codes_da, _ = outputs.get("fuels", (None, None))
+            if fuel_codes_da is not None:
+                from features.vegetation.fuel_classifier import _FBFM40_CODE_TO_MODEL
+                # The fuel grid may be a different shape than terrain.
+                # Create a uniform fuel code array matching the terrain grid.
+                fuel_code_val = 161  # TU1 default from synthetic LANDFIRE
+                if hasattr(fuel_codes_da, 'values'):
+                    unique_models = np.unique(fuel_codes_da.values)
+                    # Map model name back to code
+                    model_to_code = {v: k for k, v in _FBFM40_CODE_TO_MODEL.items()}
+                    for m in unique_models:
+                        if m not in ("NB1", "NB9"):
+                            fuel_code_val = model_to_code.get(m, 161)
+                            break
+                fuel_codes_grid = np.full(slope_arr.shape, fuel_code_val, dtype="int32")
+            else:
+                fuel_codes_grid = np.full(slope_arr.shape, 161, dtype="int32")
+
+            # Replace NaN in slope/aspect with 0 for simulation
+            slope_arr = np.nan_to_num(slope_arr, nan=0.0)
+            aspect_arr = np.nan_to_num(aspect_arr, nan=0.0)
+
+            # Run 3 scenarios from config
+            scenarios = sim_cfg.get("scenarios", {})
+            all_results = {}
+            for name, params in scenarios.items():
+                logger.info(f"  Running scenario: {name} "
+                            f"(wind={params['wind_speed_mph']}mph @ {params['wind_direction_deg']}°)")
+
+                sim = FireSpreadSimulator(
+                    fuel_params_grid={},
+                    fuel_model_codes=fuel_codes_grid,
+                    slope_grid=slope_arr,
+                    aspect_grid=aspect_arr,
+                    resolution_m=float(terrain.attrs.get("resolution_m", 1.0)),
+                    wind_speed_mph=params["wind_speed_mph"],
+                    wind_dir_deg=params["wind_direction_deg"],
+                    fuel_moisture={
+                        "M_1hr": params.get("fuel_moisture_1hr", 0.06),
+                        "M_10hr": params.get("fuel_moisture_1hr", 0.06) * 1.3,
+                        "M_100hr": 0.10,
+                        "M_lh": 0.80,
+                        "M_lw": 1.00,
+                    },
+                )
+
+                # Ignite from the upwind edge (SW corner for SW winds)
+                rows, cols = slope_arr.shape
+                wind_rad = math.radians(params["wind_direction_deg"])
+                # Fire starts upwind: if wind blows FROM SW, ignite at SW corner
+                ign_row = int(rows * 0.85) if math.cos(wind_rad) > 0 else int(rows * 0.15)
+                ign_col = int(cols * 0.15) if math.sin(wind_rad) > 0 else int(cols * 0.85)
+                ign_row = max(0, min(rows - 1, ign_row))
+                ign_col = max(0, min(cols - 1, ign_col))
+
+                result = sim.simulate_spread(ign_row, ign_col, max_time_minutes=120)
+                all_results[name] = result
+
+            # Save worst-case scenario as the primary output
+            worst = all_results.get("worst_case", list(all_results.values())[0])
+            # Add georeferenced coordinates from terrain dataset
+            if "x" in terrain.coords and "y" in terrain.coords:
+                worst = worst.assign_coords(x=terrain.x.values, y=terrain.y.values)
+                worst.attrs["crs"] = terrain.attrs.get("crs", "EPSG:32617")
+            worst.to_netcdf(sim_out_path)
+            outputs["simulation"] = worst
+            outputs["simulation_all"] = all_results
+            status["simulation"] = True
+
+            n_burned = int((~np.isnan(worst["time_of_arrival"].values)).sum())
+            logger.info(f"Simulation done in {time.time() - t0:.1f}s — "
+                        f"{n_burned} cells burned (worst case)")
+        else:
+            logger.warning("Missing terrain or fuel data — skipping simulation")
+            status["simulation"] = False
+    except Exception as e:
+        logger.error(f"Fire simulation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        status["simulation"] = False
+
+    # 8. PropertyTwin ──────────────────────────────────────────────────────
+    logger.info("=" * 60)
+    logger.info("STEP 8: Build PropertyTwin(s)")
     t0 = time.time()
     try:
         from twin.twin_builder import TwinBuilder
@@ -233,6 +339,9 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
         for twin in twins:
             logger.info(f"  Twin '{twin.name}': risk={twin.composite_risk_score:.1f} "
                         f"[{twin.risk_category()}]")
+            if twin.fire_arrival_time_p50 < float("inf"):
+                logger.info(f"    Fire arrival: {twin.fire_arrival_time_p50:.1f}min (p50), "
+                            f"ember exposure: {twin.ember_exposure_probability:.2f}")
         logger.info(f"Twins done in {time.time() - t0:.1f}s — {len(twins)} twin(s)")
     except Exception as e:
         logger.error(f"Twin building failed: {e}")

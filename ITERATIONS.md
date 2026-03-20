@@ -67,3 +67,13 @@ This iteration was a deep dive into coordinate reference systems — one of thos
 - Added CRS reprojection in twin builder — `_reproject_centroid()` transforms parcel centroids from their native CRS (EPSG:4326 or EPSG:2264) to match the terrain Dataset CRS (EPSG:32617) using pyproj, eliminating coordinate system mismatches at the extraction step
 - **Next:** verify the new tile produces non-zero terrain features and a meaningful risk score; if the full East Campus tile works, consider adding West Campus tiles and running multi-parcel twin builds
 
+---
+
+## v0.6 — 2026-03-20
+
+- Swapped `scipy.griddata` for numpy binned rasterization — 8.3M point East Campus tile went from ~2 hours to ~2 seconds. Had to add nearest-neighbor gap-filling afterward since binning leaves empty cells as NaN and `np.gradient` chokes on those.
+- Wired the Rothermel fire spread simulation into the pipeline. It was fully implemented and tested since v0.2 but had never actually run on real terrain. Runs 3 scenarios (worst-case 35mph SW, moderate, low) and saves time-of-arrival grids. Ignition starts at the upwind edge.
+- Twin builder now pulls fire arrival time and ember exposure from simulation results, so risk scores reflect actual simulated fire behavior instead of just terrain + structure defaults.
+- Built a 3D Plotly visualization: DEM surface + fire spread heatmap + building extrusions from the CHM. First time seeing the full engine output visually.
+- **Next:** NAIP imagery for real vegetation indices, per-building parcels, CNN-ViT roof classifier
+
