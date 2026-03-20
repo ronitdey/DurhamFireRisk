@@ -32,13 +32,16 @@ from loguru import logger
 
 
 # Fire arrival time contour styling: (minutes, color, weight, dash_array)
+# Includes sub-minute levels for fast-spreading fires on small grids
 _ISOCHRONE_STYLE = [
-    (5,  "#ff3333", 3, None),
-    (10, "#ff7733", 3, None),
-    (20, "#ffcc00", 2, None),
-    (30, "#33aaff", 2, "8,6"),
-    (60, "#cc77ff", 2, "8,6"),
-    (90, "#aaaaaa", 1, "4,4"),
+    (0.5, "#ff0000", 3, None),
+    (1,   "#ff3333", 3, None),
+    (2,   "#ff7733", 3, None),
+    (3,   "#ffcc00", 2, None),
+    (5,   "#33aaff", 2, None),
+    (10,  "#33aaff", 2, "8,6"),
+    (20,  "#cc77ff", 2, "8,6"),
+    (30,  "#aaaaaa", 1, "4,4"),
 ]
 
 
@@ -206,7 +209,6 @@ def _add_fire_spread_layer(m: folium.Map, paths: dict) -> None:
 
     # ── Fireline intensity heatmap ────────────────────────────────────────
     if intensity is not None:
-        heat_layer = folium.FeatureGroup(name="Fireline Intensity Heatmap", show=False)
         step = max(1, min(toa.shape) // 80)
         heat_data = []
         for r in range(0, toa.shape[0], step):
@@ -214,18 +216,22 @@ def _add_fire_spread_layer(m: folium.Map, paths: dict) -> None:
                 if not np.isnan(toa[r, c]) and intensity[r, c] > 0:
                     lon, lat = transformer.transform(float(xs[c]), float(ys[r]))
                     heat_data.append([lat, lon, float(intensity[r, c])])
+        logger.info(f"Heatmap: {len(heat_data)} data points from {step}-cell sampling.")
         if heat_data:
+            # HeatMap added directly to map (doesn't toggle well inside FeatureGroup)
             plugins.HeatMap(
                 heat_data,
-                min_opacity=0.3,
-                radius=12,
-                blur=10,
+                name="Fireline Intensity Heatmap",
+                min_opacity=0.4,
+                radius=15,
+                blur=12,
+                max_zoom=18,
                 gradient={
                     0.2: "#ffffb2", 0.4: "#fecc5c",
                     0.6: "#fd8d3c", 0.8: "#e31a1c", 1.0: "#800026",
                 },
-            ).add_to(heat_layer)
-        heat_layer.add_to(m)
+                show=True,
+            ).add_to(m)
 
     logger.info(f"Fire spread overlay added ({max_toa:.0f} min max arrival).")
 
@@ -468,18 +474,18 @@ def _add_legend(m: folium.Map) -> None:
         <hr style="border:none;border-top:1px solid #ddd;margin:6px 0;">
         <b style="font-size:13px;">Fire Isochrones</b>
         <div style="margin:6px 0 8px;">
+            <span style="display:inline-block;width:18px;border-top:3px solid #ff0000;
+                         vertical-align:middle;"></span>
+            <span style="vertical-align:middle;margin-left:4px;">30 sec</span>&emsp;
             <span style="display:inline-block;width:18px;border-top:3px solid #ff3333;
                          vertical-align:middle;"></span>
-            <span style="vertical-align:middle;margin-left:4px;">5 min</span>&emsp;
+            <span style="vertical-align:middle;margin-left:4px;">1 min</span><br>
             <span style="display:inline-block;width:18px;border-top:3px solid #ff7733;
                          vertical-align:middle;"></span>
-            <span style="vertical-align:middle;margin-left:4px;">10 min</span><br>
+            <span style="vertical-align:middle;margin-left:4px;">2 min</span>&emsp;
             <span style="display:inline-block;width:18px;border-top:2px solid #ffcc00;
                          vertical-align:middle;"></span>
-            <span style="vertical-align:middle;margin-left:4px;">20 min</span>&emsp;
-            <span style="display:inline-block;width:18px;border-top:2px dashed #33aaff;
-                         vertical-align:middle;"></span>
-            <span style="vertical-align:middle;margin-left:4px;">30 min</span>
+            <span style="vertical-align:middle;margin-left:4px;">3 min</span>
         </div>
         <hr style="border:none;border-top:1px solid #ddd;margin:6px 0;">
         <b style="font-size:13px;">Defensible Space</b>
