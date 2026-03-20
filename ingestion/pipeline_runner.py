@@ -313,7 +313,7 @@ def run_full_pipeline(colab_mode: bool = False) -> dict:
                 ign_col = max(0, min(cols - 1, ign_col))
                 logger.info(f"  Ignition at ({ign_lat:.4f}, {ign_lon:.4f}) → row={ign_row}, col={ign_col}")
 
-                result = sim.simulate_spread(ign_row, ign_col, max_time_minutes=180)
+                result = sim.simulate_spread(ign_row, ign_col, max_time_minutes=360)
                 all_results[name] = result
 
             # Save worst-case scenario as the primary output
