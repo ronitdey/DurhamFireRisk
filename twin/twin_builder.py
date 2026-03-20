@@ -153,6 +153,29 @@ class TwinBuilder:
             self._parcels = _synthetic_duke_parcels("EPSG:32617")
             logger.warning("Using synthetic Duke parcels (real parcel data not found).")
 
+        # Filter buildings to those within terrain/simulation extent
+        if self._terrain_ds is not None and self._parcels is not None and len(self._parcels) > 1:
+            ds = self._terrain_ds
+            terrain_crs = ds.attrs.get("crs", "EPSG:32617")
+            parcels_proj = (
+                self._parcels.to_crs(terrain_crs)
+                if str(self._parcels.crs) != terrain_crs
+                else self._parcels
+            )
+            xmin, xmax = float(ds.x.min()), float(ds.x.max())
+            ymin, ymax = float(ds.y.min()), float(ds.y.max())
+            centroids = parcels_proj.geometry.centroid
+            in_extent = (
+                (centroids.x >= xmin) & (centroids.x <= xmax) &
+                (centroids.y >= ymin) & (centroids.y <= ymax)
+            )
+            n_before = len(self._parcels)
+            self._parcels = self._parcels[in_extent].reset_index(drop=True)
+            logger.info(
+                f"Filtered to {len(self._parcels)}/{n_before} buildings "
+                f"within terrain extent."
+            )
+
     def _build_single_twin(self, parcel_row) -> PropertyTwin:
         """Assemble a PropertyTwin from one parcel row + feature layers."""
         geom = parcel_row.get("geometry")
