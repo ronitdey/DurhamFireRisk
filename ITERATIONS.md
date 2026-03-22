@@ -79,20 +79,22 @@ This iteration was a deep dive into coordinate reference systems — one of thos
 
 ---
 
-## v0.7 - 2026-03-20
+## v0.7 — 2026-03-20
 
-
-- Implement step for generating an interactive risk map using Folium, including satellite imagery and fire spread isochrones.
-- Update risk scoring details in popups with breakdowns for terrain, vegetation, structure, and exposure.
-- Add defensible space zones and Duke-owned property outlines to the map.
-- Improve GeoDataFrame conversion to include additional risk factors and attributes.
+- Built interactive Folium risk map on ESRI satellite tiles with per-building risk popups showing terrain/vegetation/structure/exposure breakdown bars
+- Switched from county GIS parcels (returned one giant polygon for all of Duke's land) to OSM Overpass API for individual building footprints — went from 1 parcel to 126 buildings on East Campus
+- Added East Campus boundary filter to clip out residential buildings south of campus
+- Fixed fire ignition — was starting at the downwind corner (NE) instead of upwind (SW) due to the same "FROM" convention bug as the spread direction; fire now ignites near the SW tree line and spreads across campus
+- Fixed matplotlib 3.8+ contour extraction — `cs.collections` was removed, switched to `cs.allsegs`
+- Added sub-minute isochrone levels (0.5, 1, 2, 3 min) since the fire traverses the ~700m grid in under 5 minutes at 35mph
 
 ---
 
-## v0.8 - 2026-03-20
+## v0.8 — 2026-03-22
 
-
-- Implemented `fetch_osm_buildings` to retrieve building data from OpenStreetMap.
-- Updated pipeline to prefer OSM building footprints over county parcel boundaries.
-- Adjusted TwinBuilder to load OSM buildings if available, enhancing data accuracy.
+- Built a Next.js frontend for Vercel deployment — full-screen Mapbox GL satellite map with 3D extruded buildings colored by risk score, fire isochrone overlays, and fireline intensity heatmap
+- Glass-morphism dark UI: floating stats bar, collapsible legend, slide-in building detail panel with risk breakdown bars and fire simulation stats
+- Created `scripts/export_web_data.py` to convert twins and fire simulation NetCDF into static GeoJSON for the frontend
+- Buildings render as 3D extrusions (height = stories × 4m) so you can see building scale at a glance
+- Click any building → camera flies to it at 55° pitch and detail panel shows risk score, category badge, all four risk component bars, fire arrival time, ember exposure, roof/vent/slope info
 

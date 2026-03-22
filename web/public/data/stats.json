@@ -1,0 +1,11 @@
+{
+  "buildingCount": 0,
+  "meanRisk": 0,
+  "maxRisk": 0,
+  "minRisk": 0,
+  "highRiskCount": 0,
+  "moderateRiskCount": 0,
+  "lowRiskCount": 0,
+  "fireMaxArrival": 0,
+  "fireBurnedCells": 0
+}
