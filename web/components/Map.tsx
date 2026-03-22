@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
 import { BuildingProperties } from "@/lib/types";
 import { riskColorExpression, fireColorExpression } from "@/lib/colors";
 
