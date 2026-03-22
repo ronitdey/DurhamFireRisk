@@ -44,7 +44,10 @@ export default function Map({ onBuildingClick }: MapProps) {
     m.on("error", (e) => console.error("[Map] Error:", e.error?.message || e));
 
     m.on("load", () => {
+      const canvas = mapContainer.current?.querySelector("canvas");
       console.log("[Map] Style loaded successfully");
+      console.log("[Map] Canvas:", canvas ? `${canvas.width}x${canvas.height}` : "NOT FOUND");
+      console.log("[Map] WebGL:", m.getCanvas().getContext("webgl2") ? "webgl2" : m.getCanvas().getContext("webgl") ? "webgl" : "NONE");
       // Buildings layer - 3D extruded polygons
       m.addSource("buildings", {
         type: "geojson",
@@ -245,7 +248,7 @@ export default function Map({ onBuildingClick }: MapProps) {
 
   return (
     <>
-      <div ref={mapContainer} className="absolute inset-0" />
+      <div ref={mapContainer} className="absolute inset-0" style={{ width: "100%", height: "100%" }} />
 
       {/* Layer controls */}
       <div className="absolute top-4 left-4 z-10">

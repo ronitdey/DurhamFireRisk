@@ -12,6 +12,23 @@ body {
   overflow: hidden;
 }
 
+/* Force Mapbox canvas to fill container (fallback if CDN CSS fails) */
+.mapboxgl-map {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.mapboxgl-canvas {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* Glass morphism panels */
 .glass-panel {
   background: rgba(10, 15, 30, 0.8);
