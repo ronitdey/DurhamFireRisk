@@ -26,6 +26,7 @@ export default function Map({ onBuildingClick }: MapProps) {
     if (!mapContainer.current || map.current) return;
 
     mapboxgl.accessToken = MAPBOX_TOKEN;
+    console.log("[Map] Token:", MAPBOX_TOKEN ? `${MAPBOX_TOKEN.slice(0, 10)}...` : "MISSING");
 
     const m = new mapboxgl.Map({
       container: mapContainer.current,
