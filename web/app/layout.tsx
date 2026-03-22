@@ -28,7 +28,7 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <head>
         <link
-          href="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.css"
+          href="https://api.mapbox.com/mapbox-gl-js/v3.20.0/mapbox-gl.css"
           rel="stylesheet"
         />
       </head>
