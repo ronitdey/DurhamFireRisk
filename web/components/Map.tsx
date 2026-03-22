@@ -27,6 +27,7 @@ export default function Map({ onBuildingClick }: MapProps) {
 
     mapboxgl.accessToken = MAPBOX_TOKEN;
     console.log("[Map] Token:", MAPBOX_TOKEN ? `${MAPBOX_TOKEN.slice(0, 10)}...` : "MISSING");
+    console.log("[Map] Container size:", mapContainer.current.clientWidth, "x", mapContainer.current.clientHeight);
 
     const m = new mapboxgl.Map({
       container: mapContainer.current,
@@ -40,7 +41,10 @@ export default function Map({ onBuildingClick }: MapProps) {
 
     m.addControl(new mapboxgl.NavigationControl(), "top-right");
 
+    m.on("error", (e) => console.error("[Map] Error:", e.error?.message || e));
+
     m.on("load", () => {
+      console.log("[Map] Style loaded successfully");
       // Buildings layer - 3D extruded polygons
       m.addSource("buildings", {
         type: "geojson",
