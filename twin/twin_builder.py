@@ -365,30 +365,71 @@ class TwinBuilder:
     def _populate_structure(self, twin: PropertyTwin, parcel_row) -> None:
         """
         Populate structural attributes.
-        Uses vision model if run_vision_model=True; otherwise rule-based defaults.
+        Uses vision model if run_vision_model=True; otherwise infer from
+        building footprint area, stories, and OSM building type.
         """
         if self.run_vision_model:
             # In production: load NAIP patch, run ClimateRiskBackbone, decode prediction
             pass
 
-        # Fallback: infer from parcel data
+        btype = str(parcel_row.get("land_use", "yes")).lower()
+        sqft = twin.building_sf or 0
+        stories = twin.stories or 1
         year = twin.year_built
-        if year < 1940:
-            twin.roof_material = "wood_shingles_shake"
+
+        # ── Infer year built from OSM building type + size ────────────────
+        # OSM doesn't carry year_built; use building type heuristics for
+        # Duke East Campus where construction spans 1897–2010s.
+        if year == 0 or year == 1975:
+            # Use a hash of parcel_id to assign consistent but varied years
+            h = hash(twin.parcel_id) % 100
+            if btype in ("church", "chapel"):
+                year = 1932
+            elif btype in ("dormitory", "residential"):
+                year = 1925 + (h % 50)  # 1925–1974
+            elif btype in ("university", "academic"):
+                year = 1930 + (h % 60)  # 1930–1989
+            elif stories >= 3 or sqft > 15000:
+                year = 1950 + (h % 40)  # 1950–1989 (large buildings)
+            elif sqft < 2000:
+                year = 1960 + (h % 40)  # 1960–1999 (small utility)
+            else:
+                year = 1940 + (h % 50)  # 1940–1989
+            twin.year_built = year
+
+        # ── Infer roof material from building characteristics ─────────────
+        if btype in ("church", "chapel"):
+            twin.roof_material = "slate_tile"
+            twin.roof_material_confidence = 0.6
+        elif stories >= 4 or sqft > 20000:
+            # Large/tall buildings → flat membrane roof
+            twin.roof_material = "membrane_flat"
+            twin.roof_material_confidence = 0.7
+        elif stories >= 3 or sqft > 8000:
+            # Mid-size → built-up or membrane
+            twin.roof_material = "built_up_tar"
+            twin.roof_material_confidence = 0.5
+        elif btype in ("garage", "shed", "service"):
+            twin.roof_material = "metal"
+            twin.roof_material_confidence = 0.6
+        elif year < 1940:
+            twin.roof_material = "slate_tile"
             twin.roof_material_confidence = 0.4
-        elif year < 1980:
+        elif year < 1970:
             twin.roof_material = "asphalt_shingles"
             twin.roof_material_confidence = 0.5
         else:
             twin.roof_material = "asphalt_shingles"
-            twin.roof_material_confidence = 0.6
+            twin.roof_material_confidence = 0.5
 
-        # Duke buildings: assume more modern materials
-        if twin.is_duke_owned and year >= 2000:
-            twin.roof_material = "membrane_flat"
-            twin.roof_material_confidence = 0.7
+        # ── Vent screening ────────────────────────────────────────────────
+        if year >= 2000:
+            twin.vent_screening_status = "screened"
+        elif year >= 1970:
+            twin.vent_screening_status = "partial"
+        else:
+            twin.vent_screening_status = "unscreened"
 
-        twin.vent_screening_status = "unknown"
         twin.deck_material = "unknown"
 
     def _score_risk(self, twin: PropertyTwin) -> None:
